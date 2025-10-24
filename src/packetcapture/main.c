@@ -12,11 +12,14 @@
 #include "device_scanner.h"
 
 void signal_handler(int sig) {
+    (void)sig; // Suppress unused parameter warning
     printf("\n[*] Shutting down...\n");
     exit(0);
 }
 
 int main(int argc, char *argv[]) {
+    (void)argc; // Suppress unused parameter warning
+    (void)argv; // Suppress unused parameter warning
     scan_result_t scan_result;
     int target_indices[MAX_TARGETS];
     int selected_count;
