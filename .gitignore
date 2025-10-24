@@ -1,0 +1,139 @@
+# Qt generated files
+*.pro.user
+*.pro.user.*
+*.qbs.user
+*.qbs.user.*
+*.moc
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+ui_*.h
+*.qmlc
+*.jsc
+Makefile*
+*build-*
+*.qm
+.qmake.cache
+.qmake.stash
+
+# Qt Creator and Qt build artifacts
+.qt/
+*_autogen/
+*.autogen
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+Testing/
+Makefile
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps/
+
+# Build directories
+build/
+build-*/
+debug/
+release/
+out/
+
+# Qt Creator
+CMakeLists.txt.user*
+
+# Executables and binaries
+PacketCaptureGUI
+arp_tool
+test_protocols
+*.exe
+
+# Libraries
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+libpacketcapture_backend.a
+
+# Object files
+*.o
+*.obj
+
+# Core dumps and debug files
+core
+core.*
+*.dSYM/
+*.su
+*.idb
+*.pdb
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.clangd/
+.cache/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+*.bak
+*.orig
+
+# Package files
+*.tar.gz
+*.zip
+*.rar
+*.7z
+
+# Documentation build artifacts
+docs/html/
+docs/latex/
+*.pdf
+
+# Test artifacts
+test_results/
+coverage/
+*.gcov
+*.gcda
+*.gcno
+
+# Network capture files (optional - you might want to keep some for testing)
+*.pcap
+*.pcapng
+*.cap
+
+# Configuration files with sensitive data
+config.ini
+settings.conf
+*.key
+*.pem
+*.crt
+
+# Backup files
+*~
+*.backup
+*.old
+
+# Script artifacts
+*.sh.log
+lan_scan.sh.log
+
+# Kiro IDE (keep the .kiro directory but ignore some contents)
+.kiro/cache/
+.kiro/logs/
+.kiro/temp/
