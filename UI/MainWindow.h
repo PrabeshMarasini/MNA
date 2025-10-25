@@ -71,6 +71,8 @@ private slots:
     void onSpoofingStopped();
     void onSpoofingTargetPacketCaptured(const QByteArray &packetData, const struct timeval &timestamp);
     
+    // Export functionality
+    void onExportPackets();
 
 
 protected:
@@ -84,6 +86,10 @@ private:
     void setupMenuBar();
     void connectSignals();
     QList<QString> getTargetMACsFromIPs(const QList<QString> &targetIPs);
+    
+    // Export helper methods
+    void exportToJson(const QString &fileName);
+    void exportToPcap(const QString &fileName);
     
     // UI Components
     QWidget *centralWidget;

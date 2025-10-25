@@ -30,6 +30,13 @@
 #include <QStandardPaths>
 #include <QStyle>
 #include <QDebug>
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonValue>
+#include <QFileInfo>
+#include <QMessageBox>
+#include <QFile>
 
 MainWindow::MainWindow(const QString &interface, QWidget *parent)
     : QMainWindow(parent)
@@ -191,10 +198,7 @@ void MainWindow::setupMenuBar()
     savePacketsAction->setStatusTip("Save captured packets to file (Ctrl+S)");
     savePacketsAction->setIcon(style()->standardIcon(QStyle::SP_DialogSaveButton));
     savePacketsAction->setEnabled(false);
-    connect(savePacketsAction, &QAction::triggered, this, [this]() {
-        // Placeholder for save functionality
-        QMessageBox::information(this, "Save Packets", "Save functionality not yet implemented");
-    });
+    connect(savePacketsAction, &QAction::triggered, this, &MainWindow::onExportPackets);
     fileMenu->addAction(savePacketsAction);
     
     fileMenu->addSeparator();
@@ -1124,4 +1128,133 @@ void MainWindow::onSpoofingTargetPacketCaptured(const QByteArray &packetData, co
     } catch (const std::exception &e) {
         printf("[DEBUG] MainWindow: Error processing spoofed packet: %s\n", e.what());
     }
+}
+
+void MainWindow::onExportPackets()
+{
+    if (!packetModel || packetModel->rowCount() == 0) {
+        QMessageBox::warning(this, "No Packets", "No packets to export.");
+        return;
+    }
+    
+    // Show format selection dialog
+    QString fileName = QFileDialog::getSaveFileName(this,
+        "Export Packets",
+        QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + "/captured_packets",
+        "PCAP Files (*.pcap);;JSON Files (*.json);;All Files (*)");
+    
+    if (fileName.isEmpty()) {
+        return;
+    }
+    
+    QFileInfo fileInfo(fileName);
+    QString suffix = fileInfo.suffix().toLower();
+    
+    if (suffix == "json" || fileInfo.completeBaseName().contains(".json")) {
+        // Export as JSON
+        exportToJson(fileName);
+    } else if (suffix == "pcap" || fileInfo.completeBaseName().contains(".pcap")) {
+        // Export as PCAP
+        exportToPcap(fileName);
+    } else {
+        // Default to JSON if no extension
+        exportToJson(fileName + ".json");
+    }
+}
+
+void MainWindow::exportToJson(const QString &fileName)
+{
+    QFile file(fileName);
+    if (!file.open(QIODevice::WriteOnly)) {
+        QMessageBox::warning(this, "Export Failed", 
+            QString("Failed to open file for writing:\n%1").arg(fileName));
+        return;
+    }
+    
+    QJsonArray packetsArray;
+    int packetCount = packetModel->rowCount();
+    
+    for (int i = 0; i < packetCount; ++i) {
+        PacketInfo packet = packetModel->getPacket(i);
+        
+        QJsonObject packetJson;
+        packetJson["serialNumber"] = packet.serialNumber;
+        packetJson["timestamp"] = packet.timestamp.toString(Qt::ISODate);
+        packetJson["sourceIP"] = packet.sourceIP;
+        packetJson["destinationIP"] = packet.destinationIP;
+        packetJson["protocolType"] = packet.protocolType;
+        packetJson["packetLength"] = packet.packetLength;
+        packetJson["rawData"] = QString(packet.rawData.toHex());
+        
+        packetsArray.append(packetJson);
+    }
+    
+    QJsonObject root;
+    root["packetCount"] = packetCount;
+    root["packets"] = packetsArray;
+    
+    QJsonDocument doc(root);
+    file.write(doc.toJson());
+    file.close();
+    
+    QMessageBox::information(this, "Export Successful", 
+        QString("Exported %1 packets to:\n%2").arg(packetCount).arg(fileName));
+}
+
+void MainWindow::exportToPcap(const QString &fileName)
+{
+    QFile file(fileName);
+    if (!file.open(QIODevice::WriteOnly)) {
+        QMessageBox::warning(this, "Export Failed", 
+            QString("Failed to open file for writing:\n%1").arg(fileName));
+        return;
+    }
+    
+    // PCAP Global Header (24 bytes)
+    struct pcap_file_header {
+        quint32 magic_number;   // 0xa1b2c3d4
+        quint16 version_major;  // 2
+        quint16 version_minor;  // 4
+        qint32  thiszone;       // 0
+        quint32 sigfigs;        // 0
+        quint32 snaplen;        // 65535
+        quint32 network;        // 1 (Ethernet)
+    } header;
+    
+    header.magic_number = 0xa1b2c3d4;
+    header.version_major = 2;
+    header.version_minor = 4;
+    header.thiszone = 0;
+    header.sigfigs = 0;
+    header.snaplen = 65535;
+    header.network = 1; // Ethernet
+    
+    file.write(reinterpret_cast<const char*>(&header), sizeof(header));
+    
+    // Write packets
+    int packetCount = packetModel->rowCount();
+    for (int i = 0; i < packetCount; ++i) {
+        PacketInfo packet = packetModel->getPacket(i);
+        
+        // PCAP Packet Header (16 bytes)
+        struct pcap_pkthdr {
+            quint32 ts_sec;     // timestamp seconds
+            quint32 ts_usec;    // timestamp microseconds
+            quint32 incl_len;   // number of octets of packet saved in file
+            quint32 orig_len;   // actual length of packet
+        } pkt_header;
+        
+        pkt_header.ts_sec = packet.timestamp.toSecsSinceEpoch();
+        pkt_header.ts_usec = (packet.timestamp.time().msec() * 1000);
+        pkt_header.incl_len = packet.packetLength;
+        pkt_header.orig_len = packet.packetLength;
+        
+        file.write(reinterpret_cast<const char*>(&pkt_header), sizeof(pkt_header));
+        file.write(packet.rawData);
+    }
+    
+    file.close();
+    
+    QMessageBox::information(this, "Export Successful", 
+        QString("Exported %1 packets to:\n%2").arg(packetCount).arg(fileName));
 }
