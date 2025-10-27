@@ -16,6 +16,7 @@ struct PacketInfo {
     QString destinationIP;
     int packetLength;
     QString protocolType;
+    QString moreInfo;
     QByteArray rawData;
     ProtocolAnalysisResult analysisResult;  // Changed from pointer to value type
     
@@ -35,6 +36,7 @@ public:
         DestinationIP,
         PacketLength,
         ProtocolType,
+        MoreInfo,
         ColumnCount
     };
 

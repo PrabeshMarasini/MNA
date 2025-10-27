@@ -1,6 +1,7 @@
 #include "PacketCaptureController.h"
 #include "Utils/DataValidator.h"
 #include "Utils/ErrorHandler.h"
+#include "Utils/PacketInfoGenerator.h"
 #include "Wrappers/ProtocolAnalysisWrapper.h"
 #include <QDebug>
 #include <QMutexLocker>
@@ -355,6 +356,15 @@ PacketInfo PacketCaptureController::createPacketInfo(const QByteArray &packetDat
     packet.sourceIP = ProtocolAnalysisWrapper::extractSourceIP(packetData);
     packet.destinationIP = ProtocolAnalysisWrapper::extractDestinationIP(packetData);
     packet.protocolType = ProtocolAnalysisWrapper::extractProtocolType(packetData);
+    
+    // Generate more info for the packet
+    packet.moreInfo = PacketInfoGenerator::generateMoreInfo(
+        packet.protocolType,
+        packet.sourceIP,
+        packet.destinationIP,
+        packet.packetLength,
+        packet.rawData
+    );
     
     // PERFORMANCE IMPROVEMENT: Don't perform full protocol analysis immediately
     // Analysis will be done lazily when packet is selected

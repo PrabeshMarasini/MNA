@@ -1183,6 +1183,7 @@ void MainWindow::exportToJson(const QString &fileName)
         packetJson["sourceIP"] = packet.sourceIP;
         packetJson["destinationIP"] = packet.destinationIP;
         packetJson["protocolType"] = packet.protocolType;
+        packetJson["moreInfo"] = packet.moreInfo;
         packetJson["packetLength"] = packet.packetLength;
         packetJson["rawData"] = QString(packet.rawData.toHex());
         

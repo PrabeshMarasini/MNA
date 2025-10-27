@@ -58,6 +58,7 @@ void PacketTableView::setPacketModel(PacketModel *model)
         setColumnWidth(PacketModel::DestinationIP, 120);
         setColumnWidth(PacketModel::PacketLength, 80);
         setColumnWidth(PacketModel::ProtocolType, 100);
+        setColumnWidth(PacketModel::MoreInfo, 250);
         
         qDebug() << "PacketTableView: Model set with" << model->rowCount() << "packets";
     }
@@ -82,6 +83,7 @@ void PacketTableView::setModel(QAbstractItemModel *model)
             setColumnWidth(PacketModel::DestinationIP, 120);
             setColumnWidth(PacketModel::PacketLength, 80);
             setColumnWidth(PacketModel::ProtocolType, 100);
+            setColumnWidth(PacketModel::MoreInfo, 250);
         }
         
         qDebug() << "PacketTableView: Model set with" << model->rowCount() << "rows";
@@ -201,13 +203,15 @@ void PacketTableView::onCopyPacketInfo()
                                 "Source IP: %3\n"
                                 "Destination IP: %4\n"
                                 "Protocol: %5\n"
-                                "Length: %6 bytes\n")
+                                "Length: %6 bytes\n"
+                                "More Info: %7\n")
                          .arg(packet.serialNumber)
                          .arg(packet.timestamp.toString("yyyy-MM-dd hh:mm:ss.zzz"))
                          .arg(packet.sourceIP)
                          .arg(packet.destinationIP)
                          .arg(packet.protocolType)
-                         .arg(packet.packetLength);
+                         .arg(packet.packetLength)
+                         .arg(packet.moreInfo);
     
     // Copy to clipboard
     QApplication::clipboard()->setText(packetInfo);
@@ -245,6 +249,7 @@ void PacketTableView::onExportPacket()
     packetJson["sourceIP"] = packet.sourceIP;
     packetJson["destinationIP"] = packet.destinationIP;
     packetJson["protocolType"] = packet.protocolType;
+    packetJson["moreInfo"] = packet.moreInfo;
     packetJson["packetLength"] = packet.packetLength;
     packetJson["rawData"] = QString(packet.rawData.toHex());
     

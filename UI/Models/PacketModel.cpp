@@ -52,6 +52,8 @@ QVariant PacketModel::data(const QModelIndex &index, int role) const {
             return packet.packetLength;
         case ProtocolType:
             return packet.protocolType;
+        case MoreInfo:
+            return packet.moreInfo;
         default:
             return QVariant();
         }
@@ -76,6 +78,22 @@ QVariant PacketModel::data(const QModelIndex &index, int role) const {
         }
         return QVariant();
     }
+    else if (role == Qt::ForegroundRole) {
+        // Special text color for security indicators in More Info column
+        if (index.column() == MoreInfo) {
+            if (packet.moreInfo.contains("Encrypted", Qt::CaseInsensitive) || 
+                packet.moreInfo.contains("TLS", Qt::CaseInsensitive) ||
+                packet.moreInfo.contains("SSH", Qt::CaseInsensitive) ||
+                packet.moreInfo.contains("HTTPS", Qt::CaseInsensitive)) {
+                return QColor(0, 150, 0); // Green for encrypted
+            } else if (packet.moreInfo.contains("Unencrypted", Qt::CaseInsensitive) ||
+                      packet.moreInfo.contains("Plain Text", Qt::CaseInsensitive) ||
+                      packet.moreInfo.contains("Password", Qt::CaseInsensitive)) {
+                return QColor(200, 0, 0); // Red for unencrypted/insecure
+            }
+        }
+        return QVariant();
+    }
     else if (role == Qt::FontRole) {
         QFont font;
         if (packet.protocolType.contains("Error", Qt::CaseInsensitive)) {
@@ -89,13 +107,15 @@ QVariant PacketModel::data(const QModelIndex &index, int role) const {
                                 "Source: %3\n"
                                 "Destination: %4\n"
                                 "Length: %5 bytes\n"
-                                "Protocol: %6")
+                                "Protocol: %6\n"
+                                "Info: %7")
                          .arg(packet.serialNumber)
                          .arg(packet.timestamp.toString("yyyy-MM-dd hh:mm:ss.zzz"))
                          .arg(packet.sourceIP)
                          .arg(packet.destinationIP)
                          .arg(packet.packetLength)
-                         .arg(packet.protocolType);
+                         .arg(packet.protocolType)
+                         .arg(packet.moreInfo);
         return tooltip;
     }
 
@@ -120,6 +140,8 @@ QVariant PacketModel::headerData(int section, Qt::Orientation orientation, int r
         return "Length";
     case ProtocolType:
         return "Protocol";
+    case MoreInfo:
+        return "More Info";
     default:
         return QVariant();
     }
