@@ -57,15 +57,8 @@ QVariant PacketModel::data(const QModelIndex &index, int role) const {
         }
     }
     else if (role == Qt::TextAlignmentRole) {
-        switch (index.column()) {
-        case SerialNumber:
-        case PacketLength:
-            return static_cast<int>(Qt::AlignRight | Qt::AlignVCenter);
-        case Timestamp:
-            return static_cast<int>(Qt::AlignCenter);
-        default:
-            return static_cast<int>(Qt::AlignLeft | Qt::AlignVCenter);
-        }
+        // Center align all columns for better appearance when resizing
+        return static_cast<int>(Qt::AlignCenter);
     }
     else if (role == Qt::BackgroundRole) {
         // Color coding based on protocol type
