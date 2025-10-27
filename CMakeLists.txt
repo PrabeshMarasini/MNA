@@ -86,6 +86,7 @@ set(GUI_SOURCES
     UI/Utils/MemoryManager.cpp
     UI/Utils/ErrorRecoveryDialog.cpp
     UI/Utils/LoggingDialog.cpp
+    UI/Utils/PacketInfoGenerator.cpp
     UI/Dialogs/AboutDialog.cpp
     UI/Dialogs/SettingsDialog.cpp
     UI/CaptureControlWidget.cpp
