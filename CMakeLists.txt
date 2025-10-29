@@ -42,6 +42,7 @@ set(PACKETCAPTURE_SOURCES
     src/packetcapture/protocol.c
     src/packetcapture/arp.c
     src/packetcapture/device_scanner.c
+    src/internetspeed/speedtest.c
 )
 
 # Create static library for packet capture backend
@@ -73,6 +74,7 @@ set(GUI_SOURCES
     UI/DeviceSelectionDialog.cpp
     UI/DeviceDiscoveryController.cpp
     UI/ARPSpoofingController.cpp
+    UI/SpeedTestWidget.cpp
     UI/Models/PacketModel.cpp
     UI/Models/ProtocolTreeModel.cpp
     UI/Models/PacketFilterProxyModel.cpp
@@ -105,6 +107,7 @@ set(GUI_HEADERS
     UI/DeviceSelectionDialog.h
     UI/DeviceDiscoveryController.h
     UI/ARPSpoofingController.h
+    UI/SpeedTestWidget.h
     UI/Models/PacketModel.h
     UI/Models/ProtocolTreeModel.h
     UI/Models/PacketFilterProxyModel.h
@@ -156,6 +159,16 @@ add_executable(arp_tool
 
 target_link_libraries(arp_tool PRIVATE
     packetcapture_backend
+)
+
+# Standalone speedtest executable
+add_executable(speedtest_tool
+    src/internetspeed/speedtest_main.c
+    src/internetspeed/speedtest.c
+)
+
+target_compile_options(speedtest_tool PRIVATE
+    -Wall -Wextra
 )
 
 # Testing (keeping only the C protocol tests)
