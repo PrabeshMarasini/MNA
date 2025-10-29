@@ -80,59 +80,52 @@ MainWindow::MainWindow(const QString &interface, QWidget *parent)
 
 {
     try {
-        // Initialize error handling system
-        ErrorHandler::instance()->initialize(this);
+        // Fast initialization - defer heavy operations
         ErrorHandler::instance()->setParentWidget(this);
         
-        // Initialize memory management
-        MemoryManager::instance()->initialize();
+        // Defer heavy initializations for faster startup
+        QTimer::singleShot(0, this, [this]() {
+            ErrorHandler::instance()->initialize(this);
+            MemoryManager::instance()->initialize();
+            SettingsManager::instance()->initialize();
+        });
         
-        // Initialize settings management
-        SettingsManager::instance()->initialize();
-        
-        // Connect error handling signals
-        connect(ErrorHandler::instance(), &ErrorHandler::criticalErrorOccurred,
-                this, &MainWindow::onCriticalError);
-        connect(MemoryManager::instance(), &MemoryManager::criticalMemoryWarning,
-                this, &MainWindow::onCriticalMemory);
-        
-        // Connect settings signals
-        connect(SettingsManager::instance(), &SettingsManager::settingChanged,
-                this, &MainWindow::onSettingChanged);
+        // Defer signal connections for faster startup
+        QTimer::singleShot(0, this, [this]() {
+            // Connect error handling signals
+            connect(ErrorHandler::instance(), &ErrorHandler::criticalErrorOccurred,
+                    this, &MainWindow::onCriticalError);
+            connect(MemoryManager::instance(), &MemoryManager::criticalMemoryWarning,
+                    this, &MainWindow::onCriticalMemory);
+            
+            // Connect settings signals
+            connect(SettingsManager::instance(), &SettingsManager::settingChanged,
+                    this, &MainWindow::onSettingChanged);
+        });
         
         setWindowTitle(QString("Packet Capture GUI - Interface: %1").arg(interface));
         setMinimumSize(1200, 800);
         
+        // Show window immediately for better perceived performance
+        show();
+        QApplication::processEvents();
+        
+        // Fast UI setup - only essential components first
         setupUI();
         setupMenuBar();
         setupToolBar();
         setupStatusBar();
         setupSplitters();
-        connectSignals();
         
-        // Initialize capture controller with error handling
-        try {
-            captureController = new PacketCaptureController(networkInterface, this);
-            LOG_INFO(QString("MainWindow initialized for interface: %1").arg(networkInterface));
-            
-            // Connect capture controller signals after creation
-            // Individual packet processing disabled for performance - only use batch processing
-            // connect(captureController, &PacketCaptureController::packetCaptured,
-            //         this, &MainWindow::onNewPacketCaptured);
-            connect(captureController, &PacketCaptureController::packetsBatchCaptured,
-                    this, &MainWindow::onNewPacketsBatchCaptured);
-            connect(captureController, &PacketCaptureController::captureError,
-                    this, &MainWindow::onCaptureError);
-            connect(captureController, &PacketCaptureController::captureStatusChanged,
-                    this, &MainWindow::onCaptureStatusChanged);
-            
-        } catch (const std::exception &e) {
-            LOG_CRITICAL(QString("Failed to initialize capture controller: %1").arg(e.what()));
-            throw;
-        }
+        // Defer signal connections for faster startup
+        QTimer::singleShot(0, this, &MainWindow::connectSignals);
         
-        // Restore window settings
-        restoreWindowSettings();
+        // Defer capture controller initialization for faster startup
+        // captureController will be created lazily when first needed
+        captureController = nullptr;
+        
+        // Defer window settings restoration for faster startup
+        QTimer::singleShot(0, this, &MainWindow::restoreWindowSettings);
         
     } catch (const std::exception &e) {
         LOG_CRITICAL(QString("Critical error during MainWindow initialization: %1").arg(e.what()));
@@ -168,14 +161,19 @@ void MainWindow::setupUI()
     // Create packet table view
     packetTable = new PacketTableView;
     
-    // Set up filter proxy model
-    filterProxyModel->setSourceModel(packetModel);
-    
-    try {
-        packetTable->setModel(filterProxyModel);
-    } catch (const std::exception &e) {
-    } catch (...) {
-    }
+    // Defer model setup for faster startup
+    QTimer::singleShot(0, this, [this]() {
+        // Set up filter proxy model
+        filterProxyModel->setSourceModel(packetModel);
+        
+        try {
+            packetTable->setModel(filterProxyModel);
+        } catch (const std::exception &e) {
+            qWarning() << "Failed to set packet table model:" << e.what();
+        } catch (...) {
+            qWarning() << "Unknown error setting packet table model";
+        }
+    });
     
     // Create hex view
     hexView = new HexView;
@@ -184,9 +182,11 @@ void MainWindow::setupUI()
     protocolView = new ProtocolTreeView;
     protocolView->setProtocolModel(protocolModel);
     
-    // Setup display controller
-    displayController->setViews(packetTable, hexView, protocolView);
-    displayController->setModels(packetModel, protocolModel);
+    // Defer display controller setup for faster startup
+    QTimer::singleShot(0, this, [this]() {
+        displayController->setViews(packetTable, hexView, protocolView);
+        displayController->setModels(packetModel, protocolModel);
+    });
     
     qDebug() << "MainWindow: UI components created";
 }
@@ -198,7 +198,7 @@ void MainWindow::setupMenuBar()
     
     savePacketsAction = new QAction("&Save Packets...", this);
     savePacketsAction->setShortcut(QKeySequence::Save);
-    savePacketsAction->setStatusTip("Save captured packets to file (Ctrl+S)");
+
     savePacketsAction->setIcon(style()->standardIcon(QStyle::SP_DialogSaveButton));
     savePacketsAction->setEnabled(false);
     connect(savePacketsAction, &QAction::triggered, this, &MainWindow::onExportPackets);
@@ -208,7 +208,7 @@ void MainWindow::setupMenuBar()
     
     exitAction = new QAction("E&xit", this);
     exitAction->setShortcut(QKeySequence::Quit);
-    exitAction->setStatusTip("Exit the application");
+
     connect(exitAction, &QAction::triggered, this, &QWidget::close);
     fileMenu->addAction(exitAction);
     
@@ -217,14 +217,14 @@ void MainWindow::setupMenuBar()
     
     startCaptureAction = new QAction("&Start Capture", this);
     startCaptureAction->setShortcut(QKeySequence("Ctrl+R"));
-    startCaptureAction->setStatusTip("Start packet capture (Ctrl+R)");
+
     startCaptureAction->setIcon(style()->standardIcon(QStyle::SP_MediaPlay));
     connect(startCaptureAction, &QAction::triggered, this, &MainWindow::onStartCapture);
     captureMenu->addAction(startCaptureAction);
     
     stopCaptureAction = new QAction("S&top Capture", this);
     stopCaptureAction->setShortcut(QKeySequence("Ctrl+T"));
-    stopCaptureAction->setStatusTip("Stop packet capture or ARP spoofing (Ctrl+T)");
+
     stopCaptureAction->setIcon(style()->standardIcon(QStyle::SP_MediaStop));
     stopCaptureAction->setEnabled(false);
     connect(stopCaptureAction, &QAction::triggered, this, &MainWindow::onStopCapture);
@@ -234,7 +234,7 @@ void MainWindow::setupMenuBar()
     
     deviceSelectionAction = new QAction("&Device Selection", this);
     deviceSelectionAction->setShortcut(QKeySequence("Ctrl+D"));
-    deviceSelectionAction->setStatusTip("Select devices for ARP spoofing (Ctrl+D)");
+
     deviceSelectionAction->setIcon(style()->standardIcon(QStyle::SP_ComputerIcon));
     connect(deviceSelectionAction, &QAction::triggered, this, &MainWindow::onDeviceSelectionRequested);
     captureMenu->addAction(deviceSelectionAction);
@@ -243,7 +243,7 @@ void MainWindow::setupMenuBar()
     
     clearPacketsAction = new QAction("&Clear Packets", this);
     clearPacketsAction->setShortcut(QKeySequence("Ctrl+L"));
-    clearPacketsAction->setStatusTip("Clear all captured packets (Ctrl+L)");
+
     clearPacketsAction->setIcon(style()->standardIcon(QStyle::SP_DialogResetButton));
     connect(clearPacketsAction, &QAction::triggered, packetModel, &PacketModel::clearPackets);
     captureMenu->addAction(clearPacketsAction);
@@ -253,7 +253,7 @@ void MainWindow::setupMenuBar()
     
     QAction *speedTestAction = new QAction("&Internet Speed Test", this);
     speedTestAction->setShortcut(QKeySequence("Ctrl+I"));
-    speedTestAction->setStatusTip("Test internet connection speed (Ctrl+I)");
+
     speedTestAction->setIcon(style()->standardIcon(QStyle::SP_ComputerIcon));
     connect(speedTestAction, &QAction::triggered, this, &MainWindow::onSpeedTestRequested);
     toolsMenu->addAction(speedTestAction);
@@ -264,12 +264,12 @@ void MainWindow::setupMenuBar()
     QMenu *viewMenu = menuBar()->addMenu("&View");
     
     QAction *expandAllAction = new QAction("&Expand All Protocol Fields", this);
-    expandAllAction->setStatusTip("Expand all protocol tree nodes");
+
     connect(expandAllAction, &QAction::triggered, protocolView, &ProtocolTreeView::expandAll);
     viewMenu->addAction(expandAllAction);
     
     QAction *collapseAllAction = new QAction("&Collapse All Protocol Fields", this);
-    collapseAllAction->setStatusTip("Collapse all protocol tree nodes");
+
     connect(collapseAllAction, &QAction::triggered, protocolView, &ProtocolTreeView::collapseAll);
     viewMenu->addAction(collapseAllAction);
     
@@ -325,14 +325,17 @@ void MainWindow::setupStatusBar()
     spoofingStatusLabel->setStyleSheet("color: gray; font-weight: bold;");
     statusBar()->addWidget(spoofingStatusLabel);
     
-    // Setup statistics timer
-    statisticsTimer->setInterval(1000); // Update every second
-    connect(statisticsTimer, &QTimer::timeout, this, &MainWindow::updateStatistics);
-    
-    // Setup UI update timer for throttled updates
-    uiUpdateTimer->setInterval(500); // Update UI every 500ms for better performance
-    uiUpdateTimer->setSingleShot(false);
-    connect(uiUpdateTimer, &QTimer::timeout, this, &MainWindow::performThrottledUIUpdate);
+    // Defer timer setup for faster startup
+    QTimer::singleShot(0, this, [this]() {
+        // Setup statistics timer
+        statisticsTimer->setInterval(1000); // Update every second
+        connect(statisticsTimer, &QTimer::timeout, this, &MainWindow::updateStatistics);
+        
+        // Setup UI update timer for throttled updates
+        uiUpdateTimer->setInterval(500); // Update UI every 500ms for better performance
+        uiUpdateTimer->setSingleShot(false);
+        connect(uiUpdateTimer, &QTimer::timeout, this, &MainWindow::performThrottledUIUpdate);
+    });
     
     qDebug() << "MainWindow: Status bar setup completed";
 }
@@ -427,9 +430,26 @@ void MainWindow::onStartCapture()
         return;
     }
     
+    // Lazy initialization of capture controller for better performance
     if (!captureController) {
-        captureController = new PacketCaptureController(networkInterface, this);
-        connectSignals();
+        try {
+            captureController = new PacketCaptureController(networkInterface, this);
+            LOG_INFO(QString("MainWindow initialized capture controller for interface: %1").arg(networkInterface));
+            
+            // Connect capture controller signals after creation
+            connect(captureController, &PacketCaptureController::packetsBatchCaptured,
+                    this, &MainWindow::onNewPacketsBatchCaptured);
+            connect(captureController, &PacketCaptureController::captureError,
+                    this, &MainWindow::onCaptureError);
+            connect(captureController, &PacketCaptureController::captureStatusChanged,
+                    this, &MainWindow::onCaptureStatusChanged);
+            
+        } catch (const std::exception &e) {
+            LOG_CRITICAL(QString("Failed to initialize capture controller: %1").arg(e.what()));
+            QMessageBox::critical(this, "Capture Error", 
+                QString("Failed to initialize packet capture: %1").arg(e.what()));
+            return;
+        }
     }
     
     captureController->startCapture();

@@ -22,7 +22,7 @@ NetworkInterfaceDialog::NetworkInterfaceDialog(QWidget *parent)
     , interfaceModel(new QStandardItemModel(this))
     , proxyModel(new QSortFilterProxyModel(this))
     , refreshTimer(new QTimer(this))
-    , privilegeCheckTimer(new QTimer(this))
+
 {
     setupUI();
     setupModel();
@@ -30,16 +30,13 @@ NetworkInterfaceDialog::NetworkInterfaceDialog(QWidget *parent)
     
     // Initial refresh
     refreshInterfaceList();
-    checkPrivileges();
     
     // Start periodic updates
     refreshTimer->start(5000); // Refresh every 5 seconds
-    privilegeCheckTimer->start(10000); // Check privileges every 10 seconds
 }
 
 NetworkInterfaceDialog::~NetworkInterfaceDialog() {
     refreshTimer->stop();
-    privilegeCheckTimer->stop();
 }
 
 QString NetworkInterfaceDialog::getSelectedInterface() const {
@@ -50,25 +47,14 @@ void NetworkInterfaceDialog::setupUI() {
     setWindowTitle("Select Network Interface");
     setWindowIcon(QApplication::style()->standardIcon(QStyle::SP_ComputerIcon));
     setModal(true);
-    resize(800, 600);
+    showMaximized(); // Make full screen
     
     // Main layout
     QVBoxLayout *mainLayout = new QVBoxLayout(this);
     
-    // Title and instructions
-    instructionLabel = new QLabel(this);
-    instructionLabel->setText("Select a network interface for packet capture:");
-    instructionLabel->setWordWrap(true);
-    QFont titleFont = instructionLabel->font();
-    titleFont.setPointSize(titleFont.pointSize() + 2);
-    titleFont.setBold(true);
-    instructionLabel->setFont(titleFont);
-    mainLayout->addWidget(instructionLabel);
+    // Title and instructions removed
     
-    // Privilege status
-    privilegeStatusLabel = new QLabel(this);
-    privilegeStatusLabel->setWordWrap(true);
-    mainLayout->addWidget(privilegeStatusLabel);
+    // Privilege status removed
     
     // Main content splitter
     QSplitter *splitter = new QSplitter(Qt::Horizontal, this);
@@ -106,12 +92,18 @@ void NetworkInterfaceDialog::setupUI() {
     interfaceTable->setAlternatingRowColors(true);
     interfaceTable->setSortingEnabled(true);
     interfaceTable->verticalHeader()->setVisible(false);
+    
+    // Improve text display for long interface names
+    interfaceTable->setWordWrap(true);
+    interfaceTable->setTextElideMode(Qt::ElideNone);
+    interfaceTable->resizeRowsToContents();
+    
     interfaceLayout->addWidget(interfaceTable);
     
     leftLayout->addWidget(interfaceGroup);
     splitter->addWidget(leftWidget);
     
-    // Right side - Interface details and help
+    // Right side - Interface details
     QWidget *rightWidget = new QWidget();
     QVBoxLayout *rightLayout = new QVBoxLayout(rightWidget);
     
@@ -121,26 +113,20 @@ void NetworkInterfaceDialog::setupUI() {
     
     interfaceDetailsText = new QTextEdit();
     interfaceDetailsText->setReadOnly(true);
-    interfaceDetailsText->setMaximumHeight(200);
+    // Remove height restriction to allow full height
     detailsLayout->addWidget(interfaceDetailsText);
     
     rightLayout->addWidget(detailsGroup);
     
-    // Help and instructions group
-    QGroupBox *helpGroup = new QGroupBox("Help & Instructions");
-    QVBoxLayout *helpLayout = new QVBoxLayout(helpGroup);
+    // Add stretch to keep rest of area blank
+    rightLayout->addStretch();
     
-    helpText = new QTextEdit();
-    helpText->setReadOnly(true);
-    helpText->setHtml(getHelpText());
-    helpLayout->addWidget(helpText);
-    
-    rightLayout->addWidget(helpGroup);
+    // Help and instructions group removed
     splitter->addWidget(rightWidget);
     
-    // Set splitter proportions
-    splitter->setStretchFactor(0, 2); // Interface list gets more space
-    splitter->setStretchFactor(1, 1); // Details and help get less space
+    // Set splitter proportions for full screen layout
+    splitter->setStretchFactor(0, 1); // Interface list on left
+    splitter->setStretchFactor(1, 1); // Details on right, equal space
     
     // Progress bar for operations
     progressBar = new QProgressBar();
@@ -150,11 +136,7 @@ void NetworkInterfaceDialog::setupUI() {
     // Button layout
     QHBoxLayout *buttonLayout = new QHBoxLayout();
     
-    // Test button
-    testButton = new QPushButton("Test Interface");
-    testButton->setIcon(QApplication::style()->standardIcon(QStyle::SP_DialogApplyButton));
-    testButton->setEnabled(false);
-    buttonLayout->addWidget(testButton);
+    // Test button removed
     
     buttonLayout->addStretch();
     
@@ -185,15 +167,20 @@ void NetworkInterfaceDialog::setupModel() {
     
     interfaceTable->setModel(proxyModel);
     
-    // Configure table appearance
+    // Configure table appearance with better column sizing
     QHeaderView *header = interfaceTable->horizontalHeader();
-    header->setStretchLastSection(true);
-    header->resizeSection(0, 120); // Interface name
-    header->resizeSection(1, 200); // Description
-    header->resizeSection(2, 80);  // Type
-    header->resizeSection(3, 80);  // Status
-    header->resizeSection(4, 150); // Addresses
-    header->resizeSection(5, 100); // Can Capture
+    
+    // Set resize modes for better column management
+    header->setSectionResizeMode(0, QHeaderView::ResizeToContents); // Interface name - auto-size
+    header->setSectionResizeMode(1, QHeaderView::Stretch);          // Description - stretch to fill
+    header->setSectionResizeMode(2, QHeaderView::ResizeToContents); // Type - auto-size
+    header->setSectionResizeMode(3, QHeaderView::ResizeToContents); // Status - auto-size
+    header->setSectionResizeMode(4, QHeaderView::Interactive);      // Addresses - user resizable
+    header->setSectionResizeMode(5, QHeaderView::ResizeToContents); // Can Capture - auto-size
+    
+    // Set minimum widths to ensure readability
+    header->setMinimumSectionSize(80);
+    interfaceTable->setColumnWidth(4, 200); // Set initial width for addresses column
 }
 
 void NetworkInterfaceDialog::connectSignals() {
@@ -210,8 +197,7 @@ void NetworkInterfaceDialog::connectSignals() {
             this, &NetworkInterfaceDialog::onSelectClicked);
     connect(cancelButton, &QPushButton::clicked,
             this, &QDialog::reject);
-    connect(testButton, &QPushButton::clicked,
-            this, &NetworkInterfaceDialog::onTestClicked);
+    // Test button connection removed
     
     // Table selection
     connect(interfaceTable->selectionModel(), &QItemSelectionModel::currentRowChanged,
@@ -228,8 +214,7 @@ void NetworkInterfaceDialog::connectSignals() {
     // Timers
     connect(refreshTimer, &QTimer::timeout,
             this, &NetworkInterfaceDialog::refreshInterfaceList);
-    connect(privilegeCheckTimer, &QTimer::timeout,
-            this, &NetworkInterfaceDialog::checkPrivileges);
+    // Privilege check timer connection removed
 }
 
 void NetworkInterfaceDialog::refreshInterfaceList() {
@@ -280,8 +265,30 @@ void NetworkInterfaceDialog::refreshInterfaceList() {
         }
         row.append(statusItem);
         
-        // Addresses
-        QString addresses = info.addresses.isEmpty() ? "None" : info.addresses;
+        // Addresses - clean up the display
+        QString addresses;
+        if (info.addresses.isEmpty()) {
+            addresses = "None";
+        } else {
+            // Clean up addresses - remove interface names and extra info
+            QStringList addrList = info.addresses.split(", ");
+            QStringList cleanAddresses;
+            for (const QString &addr : addrList) {
+                QString cleanAddr = addr.trimmed();
+                // Remove interface name suffix (e.g., %wlan0)
+                if (cleanAddr.contains('%')) {
+                    cleanAddr = cleanAddr.split('%').first();
+                }
+                // Skip empty addresses
+                if (!cleanAddr.isEmpty()) {
+                    cleanAddresses.append(cleanAddr);
+                }
+            }
+            addresses = cleanAddresses.join(", ");
+            if (addresses.isEmpty()) {
+                addresses = "None";
+            }
+        }
         QStandardItem *addrItem = new QStandardItem(addresses);
         row.append(addrItem);
         
@@ -316,6 +323,9 @@ void NetworkInterfaceDialog::refreshInterfaceList() {
     
     // Auto-select best interface
     autoSelectBestInterface();
+    
+    // Resize rows to fit content properly
+    interfaceTable->resizeRowsToContents();
     
     progressBar->setVisible(false);
     updateButtonStates();
@@ -357,25 +367,7 @@ void NetworkInterfaceDialog::onSelectClicked() {
     }
 }
 
-void NetworkInterfaceDialog::onTestClicked() {
-    if (selectedInterface.isEmpty()) {
-        return;
-    }
-    
-    testButton->setEnabled(false);
-    progressBar->setVisible(true);
-    progressBar->setRange(0, 0);
-    
-    // Test interface access
-    QString testResult = PrivilegeChecker::testInterfaceAccess(selectedInterface);
-    
-    // Show result in details
-    interfaceDetailsText->append("\n--- Interface Test Result ---");
-    interfaceDetailsText->append(testResult);
-    
-    progressBar->setVisible(false);
-    testButton->setEnabled(true);
-}
+// Test interface method removed
 
 void NetworkInterfaceDialog::onFilterChanged() {
     refreshInterfaceList();
@@ -385,22 +377,7 @@ void NetworkInterfaceDialog::handleError(const QString &error) {
     interfaceDetailsText->append(QString("\n--- Error ---\n%1").arg(error));
 }
 
-void NetworkInterfaceDialog::checkPrivileges() {
-    bool hasPrivileges = PrivilegeChecker::hasPacketCapturePrivileges();
-    
-    if (hasPrivileges) {
-        privilegeStatusLabel->setText("✅ Packet capture privileges: OK");
-        privilegeStatusLabel->setStyleSheet("color: green;");
-    } else {
-        privilegeStatusLabel->setText("⚠️ Packet capture privileges: INSUFFICIENT");
-        privilegeStatusLabel->setStyleSheet("color: red;");
-        
-        // Show privilege instructions in help text
-        QString instructions = PrivilegeChecker::getPrivilegeInstructions();
-        helpText->setHtml(getHelpText() + "<br><br><b>Privilege Instructions:</b><br>" + 
-                         instructions.replace("\n", "<br>"));
-    }
-}
+// Check privileges method removed
 
 void NetworkInterfaceDialog::updateInterfaceDetails(const QString &interface) {
     if (interface.isEmpty()) {
@@ -419,24 +396,30 @@ void NetworkInterfaceDialog::updateInterfaceDetails(const QString &interface) {
     details += QString("<b>Can Capture:</b> %1<br>").arg(info.canCapture ? "Yes" : "No");
     
     if (!info.addresses.isEmpty()) {
-        details += QString("<b>IP Addresses:</b> %1<br>").arg(info.addresses);
+        // Clean up addresses display
+        QStringList addrList = info.addresses.split(", ");
+        QStringList cleanAddresses;
+        for (const QString &addr : addrList) {
+            QString cleanAddr = addr.trimmed();
+            // Remove interface name suffix (e.g., %wlan0)
+            if (cleanAddr.contains('%')) {
+                cleanAddr = cleanAddr.split('%').first();
+            }
+            // Skip empty addresses
+            if (!cleanAddr.isEmpty()) {
+                cleanAddresses.append(cleanAddr);
+            }
+        }
+        if (!cleanAddresses.isEmpty()) {
+            details += QString("<b>IP Addresses:</b> %1<br>").arg(cleanAddresses.join(", "));
+        }
     }
     
     if (!info.errorMessage.isEmpty()) {
         details += QString("<b>Error:</b> <span style='color: red;'>%1</span><br>").arg(info.errorMessage);
     }
     
-    // Add recommendations
-    details += "<br><b>Recommendation:</b> ";
-    if (info.canCapture && info.isUp && !info.isLoopback) {
-        details += "<span style='color: green;'>Excellent choice for packet capture</span>";
-    } else if (info.canCapture && !info.isLoopback) {
-        details += "<span style='color: orange;'>Good choice, but interface is down</span>";
-    } else if (info.isLoopback) {
-        details += "<span style='color: gray;'>Loopback interface - only captures local traffic</span>";
-    } else {
-        details += "<span style='color: red;'>Not suitable for packet capture</span>";
-    }
+    // Recommendations removed
     
     interfaceDetailsText->setHtml(details);
 }
@@ -451,7 +434,6 @@ void NetworkInterfaceDialog::updateButtonStates() {
     }
     
     selectButton->setEnabled(hasSelection);
-    testButton->setEnabled(hasSelection);
     
     // Update select button text based on capability
     if (hasSelection && canCapture) {
@@ -486,27 +468,3 @@ void NetworkInterfaceDialog::autoSelectBestInterface() {
     }
 }
 
-QString NetworkInterfaceDialog::getHelpText() const {
-    return QString(
-        "<b>How to select a network interface:</b><br>"
-        "• <span style='color: green;'>Green highlighted</span> interfaces are ideal for packet capture<br>"
-        "• <span style='color: orange;'>Yellow highlighted</span> interfaces may work but have limitations<br>"
-        "• <span style='color: red;'>Red highlighted</span> interfaces are not suitable for capture<br>"
-        "• Loopback interfaces only capture local traffic<br>"
-        "• 'Up' status means the interface is active<br>"
-        "• 'Can Capture' indicates packet capture capability<br><br>"
-        
-        "<b>Interface Types:</b><br>"
-        "• 📶 Wireless interfaces (WiFi)<br>"
-        "• 🔌 Ethernet interfaces (Wired)<br>"
-        "• 🔄 Loopback interfaces (Local)<br>"
-        "• 🚇 Tunnel interfaces (VPN)<br>"
-        "• 📦 Virtual interfaces (Containers)<br><br>"
-        
-        "<b>Tips:</b><br>"
-        "• Use 'Test Interface' to verify packet capture capability<br>"
-        "• Refresh the list if interfaces change<br>"
-        "• Check 'Show all interfaces' to see loopback and virtual interfaces<br>"
-        "• Double-click an interface to select it quickly"
-    );
-}

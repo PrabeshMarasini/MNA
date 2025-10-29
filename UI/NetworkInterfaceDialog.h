@@ -31,10 +31,8 @@ private slots:
     void onInterfaceDoubleClicked(const QModelIndex &index);
     void onRefreshClicked();
     void onSelectClicked();
-    void onTestClicked();
     void onFilterChanged();
     void handleError(const QString &error);
-    void checkPrivileges();
 
 private:
     void setupUI();
@@ -43,20 +41,16 @@ private:
     void updateInterfaceDetails(const QString &interface);
     void updateButtonStates();
     void autoSelectBestInterface();
-    QString getHelpText() const;
+
     
     // UI Components
-    QLabel *instructionLabel;
-    QLabel *privilegeStatusLabel;
     QTableView *interfaceTable;
     QCheckBox *showAllCheckBox;
 
     QPushButton *refreshButton;
     QPushButton *selectButton;
     QPushButton *cancelButton;
-    QPushButton *testButton;
     QTextEdit *interfaceDetailsText;
-    QTextEdit *helpText;
     QProgressBar *progressBar;
     
     // Data and models
@@ -67,7 +61,6 @@ private:
     
     // Timers
     QTimer *refreshTimer;
-    QTimer *privilegeCheckTimer;
 };
 
 #endif // NETWORKINTERFACEDIALOG_H

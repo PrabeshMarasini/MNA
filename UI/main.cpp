@@ -45,7 +45,7 @@ int main(int argc, char *argv[])
         // Set up command line parser
         QCommandLineParser parser;
         parser.setApplicationDescription("A comprehensive packet capture and analysis tool");
-        parser.addHelpOption();
+
         parser.addVersionOption();
         
         QCommandLineOption interfaceOption(QStringList() << "i" << "interface",

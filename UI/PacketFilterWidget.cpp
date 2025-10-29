@@ -1,7 +1,7 @@
 #include "PacketFilterWidget.h"
 #include <QRegularExpression>
 #include <QMessageBox>
-#include <QToolTip>
+
 
 PacketFilterWidget::PacketFilterWidget(QWidget *parent)
     : QWidget(parent)
@@ -36,7 +36,7 @@ void PacketFilterWidget::setupCustomFilter()
     
     customFilterEdit = new QLineEdit(this);
     customFilterEdit->setPlaceholderText("Search packets... (e.g., 192.168.1.1, TCP, HTTP)");
-    customFilterEdit->setToolTip("Search for packets by IP address, protocol, or other criteria");
+
     
     clearButton = new QPushButton("Clear", this);
     clearButton->setMaximumWidth(60);
