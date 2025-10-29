@@ -27,6 +27,7 @@ class PacketFilterProxyModel;
 class PacketParserWorker;
 class DeviceSelectionDialog;
 class ARPSpoofingController;
+class SpeedTestWidget;
 
 class MainWindow : public QMainWindow
 {
@@ -73,6 +74,9 @@ private slots:
     
     // Export functionality
     void onExportPackets();
+    
+    // Speed test functionality
+    void onSpeedTestRequested();
 
 
 protected:

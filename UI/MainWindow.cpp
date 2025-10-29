@@ -7,6 +7,7 @@
 #include "PacketFilterWidget.h"
 #include "DeviceSelectionDialog.h"
 #include "ARPSpoofingController.h"
+#include "SpeedTestWidget.h"
 #include "Models/PacketModel.h"
 #include "Models/ProtocolTreeModel.h"
 #include "Models/PacketFilterProxyModel.h"
@@ -27,6 +28,8 @@
 #include <QTimer>
 #include <QAction>
 #include <QFileDialog>
+#include <QDialog>
+#include <QPushButton>
 #include <QStandardPaths>
 #include <QStyle>
 #include <QDebug>
@@ -244,6 +247,16 @@ void MainWindow::setupMenuBar()
     clearPacketsAction->setIcon(style()->standardIcon(QStyle::SP_DialogResetButton));
     connect(clearPacketsAction, &QAction::triggered, packetModel, &PacketModel::clearPackets);
     captureMenu->addAction(clearPacketsAction);
+    
+    // Tools menu
+    QMenu *toolsMenu = menuBar()->addMenu("&Tools");
+    
+    QAction *speedTestAction = new QAction("&Internet Speed Test", this);
+    speedTestAction->setShortcut(QKeySequence("Ctrl+I"));
+    speedTestAction->setStatusTip("Test internet connection speed (Ctrl+I)");
+    speedTestAction->setIcon(style()->standardIcon(QStyle::SP_ComputerIcon));
+    connect(speedTestAction, &QAction::triggered, this, &MainWindow::onSpeedTestRequested);
+    toolsMenu->addAction(speedTestAction);
     
 
     
@@ -1258,4 +1271,36 @@ void MainWindow::exportToPcap(const QString &fileName)
     
     QMessageBox::information(this, "Export Successful", 
         QString("Exported %1 packets to:\n%2").arg(packetCount).arg(fileName));
+}
+
+void MainWindow::onSpeedTestRequested()
+{
+    // Create speed test dialog
+    QDialog *speedTestDialog = new QDialog(this);
+    speedTestDialog->setWindowTitle("Internet Speed Test");
+    speedTestDialog->setModal(true);
+    speedTestDialog->resize(400, 200);
+    
+    // Create layout
+    QVBoxLayout *layout = new QVBoxLayout(speedTestDialog);
+    
+    // Create speed test widget
+    SpeedTestWidget *speedTestWidget = new SpeedTestWidget(speedTestDialog);
+    layout->addWidget(speedTestWidget);
+    
+    // Add close button
+    QHBoxLayout *buttonLayout = new QHBoxLayout();
+    buttonLayout->addStretch();
+    
+    QPushButton *closeButton = new QPushButton("Close", speedTestDialog);
+    connect(closeButton, &QPushButton::clicked, speedTestDialog, &QDialog::accept);
+    buttonLayout->addWidget(closeButton);
+    
+    layout->addLayout(buttonLayout);
+    
+    // Show dialog
+    speedTestDialog->exec();
+    
+    // Clean up
+    speedTestDialog->deleteLater();
 }
