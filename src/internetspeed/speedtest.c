@@ -431,7 +431,3 @@ int run_speedtest(void) {
     
     return (download_speed > 0 && upload_speed > 0) ? 0 : 1;
 }
-
-int main() {
-    return run_speedtest();
-}
