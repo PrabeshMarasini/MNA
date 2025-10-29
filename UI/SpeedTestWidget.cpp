@@ -208,7 +208,7 @@ void SpeedTestWidget::onUploadSpeedResult(double speed)
             m_uploadSpeedLabel->setStyleSheet("QLabel { font-size: 16px; color: #cc0000; }");
         }
     } else if (speed > 0) {
-        QString speedText = QString("%.2f Mbps").arg(speed);
+        QString speedText = QString("%1 Mbps").arg(speed, 0, 'f', 2);
         qDebug() << "Setting upload speed text to:" << speedText;
         m_uploadSpeedLabel->setText(speedText);
         m_uploadSpeedLabel->setStyleSheet("QLabel { font-size: 16px; color: #cc6600; }");
