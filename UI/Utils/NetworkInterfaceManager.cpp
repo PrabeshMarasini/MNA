@@ -153,12 +153,14 @@ bool NetworkInterfaceManager::isInterfaceUp(const QString &interface) {
 }
 
 QString NetworkInterfaceManager::getDefaultInterface() {
-    char *defaultDevice = nullptr;
     char errorBuffer[PCAP_ERRBUF_SIZE];
+    pcap_if_t *alldevs = nullptr;
     
-    defaultDevice = pcap_lookupdev(errorBuffer);
-    if (defaultDevice) {
-        return QString::fromUtf8(defaultDevice);
+    // Use the recommended pcap_findalldevs instead of deprecated pcap_lookupdev
+    if (pcap_findalldevs(&alldevs, errorBuffer) == 0 && alldevs != nullptr) {
+        QString defaultDevice = QString::fromUtf8(alldevs->name);
+        pcap_freealldevs(alldevs);
+        return defaultDevice;
     }
     
     // Fallback: return best capture interface

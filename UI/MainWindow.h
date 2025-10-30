@@ -85,6 +85,9 @@ private slots:
     
     // Latency test functionality
     void onLatencyTestRequested();
+    
+    // Port scanner functionality
+    void onPortScanRequested();
 
 
 protected:

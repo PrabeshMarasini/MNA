@@ -9,6 +9,7 @@
 #include "ARPSpoofingController.h"
 #include "SpeedTestWidget.h"
 #include "LatencyTestWidget.h"
+#include "PortScanWidget.h"
 #include "Models/PacketModel.h"
 #include "Models/ProtocolTreeModel.h"
 #include "Models/PacketFilterProxyModel.h"
@@ -269,6 +270,12 @@ void MainWindow::setupMenuBar()
     latencyTestAction->setIcon(style()->standardIcon(QStyle::SP_DialogApplyButton));
     connect(latencyTestAction, &QAction::triggered, this, &MainWindow::onLatencyTestRequested);
     toolsMenu->addAction(latencyTestAction);
+    
+    QAction *portScanAction = new QAction("&Port Scanner", this);
+    portScanAction->setShortcut(QKeySequence("Ctrl+P"));
+    portScanAction->setIcon(style()->standardIcon(QStyle::SP_FileDialogDetailedView));
+    connect(portScanAction, &QAction::triggered, this, &MainWindow::onPortScanRequested);
+    toolsMenu->addAction(portScanAction);
     
 
     
@@ -1407,6 +1414,38 @@ void MainWindow::onLatencyTestRequested()
     
     // Clean up
     latencyTestDialog->deleteLater();
+}
+
+void MainWindow::onPortScanRequested()
+{
+    // Create port scan dialog
+    QDialog *portScanDialog = new QDialog(this);
+    portScanDialog->setWindowTitle("Network Port Scanner");
+    portScanDialog->setModal(true);
+    portScanDialog->resize(600, 500);
+    
+    // Create layout
+    QVBoxLayout *layout = new QVBoxLayout(portScanDialog);
+    
+    // Create port scan widget
+    PortScanWidget *portScanWidget = new PortScanWidget(portScanDialog);
+    layout->addWidget(portScanWidget);
+    
+    // Add close button
+    QHBoxLayout *buttonLayout = new QHBoxLayout();
+    buttonLayout->addStretch();
+    
+    QPushButton *closeButton = new QPushButton("Close", portScanDialog);
+    connect(closeButton, &QPushButton::clicked, portScanDialog, &QDialog::accept);
+    buttonLayout->addWidget(closeButton);
+    
+    layout->addLayout(buttonLayout);
+    
+    // Show dialog
+    portScanDialog->exec();
+    
+    // Clean up
+    portScanDialog->deleteLater();
 }
 
 void MainWindow::onMemoryLimitExceeded()
