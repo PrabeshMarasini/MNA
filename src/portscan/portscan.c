@@ -43,12 +43,6 @@ static const struct {
     {27018, "MongoDB"}
 };
 
-static long long get_time_ms() {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
-}
-
 // Resolve hostname to IP address
 static int resolve_hostname(const char *hostname, struct in_addr *addr) {
     struct hostent *he = gethostbyname(hostname);
@@ -63,7 +57,6 @@ static int resolve_hostname(const char *hostname, struct in_addr *addr) {
 int scan_port(const char* hostname, int port) {
     int sock = -1;
     struct sockaddr_in server_addr;
-    long long start_time, end_time;
     int result = -1; // -1 = error, 0 = closed, 1 = open
     
     if (resolve_hostname(hostname, &server_addr.sin_addr) < 0) {
@@ -91,13 +84,9 @@ int scan_port(const char* hostname, int port) {
     }
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
     setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
-    start_time = get_time_ms();
     
     // Attempt to connect
     int connect_result = connect(sock, (struct sockaddr*)&server_addr, sizeof(server_addr));
-    
-    // End timing
-    end_time = get_time_ms();
     
     if (connect_result == 0) {
         result = 1; // Port is open
