@@ -43,6 +43,7 @@ set(PACKETCAPTURE_SOURCES
     src/packetcapture/arp.c
     src/packetcapture/device_scanner.c
     src/internetspeed/speedtest.c
+    src/latency/latency.c
 )
 
 # Create static library for packet capture backend
@@ -75,6 +76,7 @@ set(GUI_SOURCES
     UI/DeviceDiscoveryController.cpp
     UI/ARPSpoofingController.cpp
     UI/SpeedTestWidget.cpp
+    UI/LatencyTestWidget.cpp
     UI/Models/PacketModel.cpp
     UI/Models/ProtocolTreeModel.cpp
     UI/Models/PacketFilterProxyModel.cpp
@@ -108,6 +110,7 @@ set(GUI_HEADERS
     UI/DeviceDiscoveryController.h
     UI/ARPSpoofingController.h
     UI/SpeedTestWidget.h
+    UI/LatencyTestWidget.h
     UI/Models/PacketModel.h
     UI/Models/ProtocolTreeModel.h
     UI/Models/PacketFilterProxyModel.h
@@ -168,6 +171,16 @@ add_executable(speedtest_tool
 )
 
 target_compile_options(speedtest_tool PRIVATE
+    -Wall -Wextra
+)
+
+# Standalone latency test executable
+add_executable(latency_tool
+    src/latency/latency_main.c
+    src/latency/latency.c
+)
+
+target_compile_options(latency_tool PRIVATE
     -Wall -Wextra
 )
 
