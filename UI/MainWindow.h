@@ -57,6 +57,11 @@ private slots:
     void resetCaptureController();
     void resetApplicationState();
     
+    // Memory and performance management slots
+    void onMemoryLimitExceeded();
+    void onBackpressureApplied();
+    void onSamplingApplied();
+    
     // Settings management slots
     void onSettingChanged(const QString &key, const QVariant &value);
     void saveWindowSettings();
