@@ -8,6 +8,7 @@
 #include "DeviceSelectionDialog.h"
 #include "ARPSpoofingController.h"
 #include "SpeedTestWidget.h"
+#include "LatencyTestWidget.h"
 #include "Models/PacketModel.h"
 #include "Models/ProtocolTreeModel.h"
 #include "Models/PacketFilterProxyModel.h"
@@ -259,10 +260,15 @@ void MainWindow::setupMenuBar()
     
     QAction *speedTestAction = new QAction("&Internet Speed Test", this);
     speedTestAction->setShortcut(QKeySequence("Ctrl+I"));
-
     speedTestAction->setIcon(style()->standardIcon(QStyle::SP_ComputerIcon));
     connect(speedTestAction, &QAction::triggered, this, &MainWindow::onSpeedTestRequested);
     toolsMenu->addAction(speedTestAction);
+    
+    QAction *latencyTestAction = new QAction("&Network Latency Test", this);
+    latencyTestAction->setShortcut(QKeySequence("Ctrl+L"));
+    latencyTestAction->setIcon(style()->standardIcon(QStyle::SP_DialogApplyButton));
+    connect(latencyTestAction, &QAction::triggered, this, &MainWindow::onLatencyTestRequested);
+    toolsMenu->addAction(latencyTestAction);
     
 
     
@@ -1369,6 +1375,38 @@ void MainWindow::onSpeedTestRequested()
     
     // Clean up
     speedTestDialog->deleteLater();
+}
+
+void MainWindow::onLatencyTestRequested()
+{
+    // Create latency test dialog
+    QDialog *latencyTestDialog = new QDialog(this);
+    latencyTestDialog->setWindowTitle("Network Latency Test");
+    latencyTestDialog->setModal(true);
+    latencyTestDialog->resize(450, 250);
+    
+    // Create layout
+    QVBoxLayout *layout = new QVBoxLayout(latencyTestDialog);
+    
+    // Create latency test widget
+    LatencyTestWidget *latencyTestWidget = new LatencyTestWidget(latencyTestDialog);
+    layout->addWidget(latencyTestWidget);
+    
+    // Add close button
+    QHBoxLayout *buttonLayout = new QHBoxLayout();
+    buttonLayout->addStretch();
+    
+    QPushButton *closeButton = new QPushButton("Close", latencyTestDialog);
+    connect(closeButton, &QPushButton::clicked, latencyTestDialog, &QDialog::accept);
+    buttonLayout->addWidget(closeButton);
+    
+    layout->addLayout(buttonLayout);
+    
+    // Show dialog
+    latencyTestDialog->exec();
+    
+    // Clean up
+    latencyTestDialog->deleteLater();
 }
 
 void MainWindow::onMemoryLimitExceeded()

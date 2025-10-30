@@ -82,6 +82,9 @@ private slots:
     
     // Speed test functionality
     void onSpeedTestRequested();
+    
+    // Latency test functionality
+    void onLatencyTestRequested();
 
 
 protected:
