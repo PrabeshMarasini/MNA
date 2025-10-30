@@ -11,6 +11,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QDebug>
+#include <QWheelEvent>
+#include <QResizeEvent>
 
 PacketTableView::PacketTableView(QWidget *parent)
     : QTableView(parent)
@@ -21,9 +23,18 @@ PacketTableView::PacketTableView(QWidget *parent)
     , followStreamAction(nullptr)
     , scrollUpdateTimer(nullptr)
     , autoScrollEnabled(true)
+    , virtualScrollingEnabled(false)
+    , visibleRowCount(0)
+    , firstVisibleRow(0)
+    , viewportUpdateTimer(new QTimer(this))
 {
     setupTable();
     setupContextMenu();
+    
+    // Setup virtual scrolling timer
+    viewportUpdateTimer->setSingleShot(true);
+    viewportUpdateTimer->setInterval(50); // 50ms delay for smooth scrolling
+    connect(viewportUpdateTimer, &QTimer::timeout, this, &PacketTableView::updateVisibleRows);
 }
 
 PacketTableView::~PacketTableView()
@@ -117,6 +128,10 @@ void PacketTableView::setupTable()
     
     // Connect double-click signal
     connect(this, &QTableView::doubleClicked, this, &PacketTableView::onItemDoubleClicked);
+    
+    // Connect scroll bar for virtual scrolling
+    connect(verticalScrollBar(), &QAbstractSlider::valueChanged, 
+            this, &PacketTableView::onVerticalScrollChanged);
     
     qDebug() << "PacketTableView: Table setup completed";
 }
@@ -350,4 +365,97 @@ void PacketTableView::setAutoScroll(bool enabled)
     if (!enabled && scrollUpdateTimer && scrollUpdateTimer->isActive()) {
         scrollUpdateTimer->stop();
     }
+}
+
+void PacketTableView::wheelEvent(QWheelEvent *event)
+{
+    if (virtualScrollingEnabled) {
+        // Handle wheel event for virtual scrolling
+        QTableView::wheelEvent(event);
+        // Trigger viewport update with delay
+        viewportUpdateTimer->start();
+    } else {
+        QTableView::wheelEvent(event);
+    }
+}
+
+void PacketTableView::resizeEvent(QResizeEvent *event)
+{
+    QTableView::resizeEvent(event);
+    
+    if (virtualScrollingEnabled) {
+        // Update visible row count when widget is resized
+        updateRowHeights();
+        viewportUpdateTimer->start();
+    }
+}
+
+void PacketTableView::onVerticalScrollChanged(int value)
+{
+    Q_UNUSED(value)
+    
+    if (virtualScrollingEnabled) {
+        // Trigger viewport update with delay
+        viewportUpdateTimer->start();
+    }
+}
+
+void PacketTableView::updateVisibleRows()
+{
+    if (!virtualScrollingEnabled || !packetModel) {
+        return;
+    }
+    
+    // Calculate visible rows based on viewport height
+    int viewportHeight = viewport()->height();
+    int rowHeight = verticalHeader()->defaultSectionSize();
+    visibleRowCount = viewportHeight / rowHeight + 2; // Add buffer rows
+    
+    // Calculate first visible row
+    firstVisibleRow = verticalScrollBar()->value();
+    
+    // Update viewport with visible rows only
+    // This is a simplified approach - in a full implementation,
+    // you would need to implement a custom QAbstractItemModel
+    // that only provides data for visible rows
+    
+    qDebug() << "PacketTableView: Virtual scrolling - visible rows:" << visibleRowCount 
+             << "first row:" << firstVisibleRow;
+}
+
+void PacketTableView::updateRowHeights()
+{
+    if (!virtualScrollingEnabled) {
+        return;
+    }
+    
+    // Update row heights for virtual scrolling
+    int viewportHeight = viewport()->height();
+    int rowCount = packetModel ? packetModel->rowCount() : 0;
+    
+    if (rowCount > 0) {
+        int rowHeight = qMax(20, viewportHeight / qMin(rowCount, 20));
+        verticalHeader()->setDefaultSectionSize(rowHeight);
+    }
+}
+
+void PacketTableView::setVirtualScrollingEnabled(bool enabled)
+{
+    virtualScrollingEnabled = enabled;
+    
+    if (enabled) {
+        // Enable virtual scrolling optimizations
+        setVerticalScrollMode(QAbstractItemView::ScrollPerItem);
+        updateRowHeights();
+        viewportUpdateTimer->start();
+    } else {
+        // Disable virtual scrolling - return to normal mode
+        setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+        verticalHeader()->setDefaultSectionSize(20);
+    }
+}
+
+bool PacketTableView::isVirtualScrollingEnabled() const
+{
+    return virtualScrollingEnabled;
 }

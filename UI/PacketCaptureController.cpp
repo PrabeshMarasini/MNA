@@ -3,6 +3,7 @@
 #include "Utils/ErrorHandler.h"
 #include "Utils/PacketInfoGenerator.h"
 #include "Wrappers/ProtocolAnalysisWrapper.h"
+#include "Models/PacketModel.h"
 #include <QDebug>
 #include <QMutexLocker>
 #include <QCoreApplication>
@@ -19,6 +20,14 @@ PacketCaptureController::PacketCaptureController(const QString &interface, QObje
     , packetCount(0)
     , totalBytes(0)
     , statisticsTimer(new QTimer(this))
+    , ringBufferEnabled(false)
+    , ringBufferSize(100000)
+    , backpressureActive(false)
+    , backpressureDelayMs(0)
+    , samplingMode(NoSampling)
+    , samplingRate(100)  // Sample every 100th packet
+    , targetRate(1000)   // Target 1000 packets per second
+    , sampledPacketCount(0)
 {
     setupWorker();
     
@@ -80,6 +89,7 @@ void PacketCaptureController::startCapture() {
         capturing = true;
         packetCount = 0;
         totalBytes = 0;
+        sampledPacketCount = 0;
         
         // Set filter if specified
         if (!currentFilter.isEmpty()) {
@@ -93,6 +103,27 @@ void PacketCaptureController::startCapture() {
             captureWorker->spoofingTargets = this->targetMACs;
             captureWorker->spoofingModeActive = true;
         }
+        
+        // Configure ring buffer if enabled
+        if (ringBufferEnabled) {
+            QMetaObject::invokeMethod(captureWorker, "setRingBufferEnabled", 
+                                     Qt::QueuedConnection,
+                                     Q_ARG(bool, ringBufferEnabled));
+            QMetaObject::invokeMethod(captureWorker, "setRingBufferSize", 
+                                     Qt::QueuedConnection,
+                                     Q_ARG(int, ringBufferSize));
+        }
+        
+        // Configure packet sampling
+        QMetaObject::invokeMethod(captureWorker, "setSamplingMode", 
+                                 Qt::QueuedConnection,
+                                 Q_ARG(PacketCaptureWorker::SamplingMode, static_cast<PacketCaptureWorker::SamplingMode>(samplingMode)));
+        QMetaObject::invokeMethod(captureWorker, "setSamplingRate", 
+                                 Qt::QueuedConnection,
+                                 Q_ARG(int, samplingRate));
+        QMetaObject::invokeMethod(captureWorker, "setTargetRate", 
+                                 Qt::QueuedConnection,
+                                 Q_ARG(int, targetRate));
         
         // Start capture
         QMetaObject::invokeMethod(captureWorker, "startCapture", Qt::QueuedConnection);
@@ -158,96 +189,46 @@ void PacketCaptureController::setSpoofingMode(bool enabled, const QList<QString>
              << "with" << targetMACs.size() << "targets";
 }
 
-void PacketCaptureController::processCapturedPacket(const QByteArray &packetData, const struct timeval &timestamp) {
-    if (!capturing) {
-        return;
-    }
-    
-    try {
-        
-        PacketInfo packet = createPacketInfo(packetData, timestamp);
-        
-        
-        // Validate packet
-        if (!DataValidator::isValidPacketInfo(packet)) {
-            qWarning() << "Invalid packet data:" << DataValidator::getLastError();
-            return;
-        }
-        
-        // Update statistics
-        {
-            QMutexLocker locker(&captureMutex);
-            packetCount++;
-            totalBytes += packet.packetLength;
-        }
-        
-        emit packetCaptured(packet);
-        
-    } catch (const std::exception &e) {
-        qWarning() << "Error processing packet:" << e.what();
-    }
+// Ring buffer configuration methods
+void PacketCaptureController::setRingBufferEnabled(bool enabled) {
+    ringBufferEnabled = enabled;
 }
 
-void PacketCaptureController::handleWorkerError(const QString &error) {
-    qWarning() << "Capture worker error:" << error;
-    
-    {
-        QMutexLocker locker(&captureMutex);
-        capturing = false;
-    }
-    
-    emit captureError(error);
-    emit captureStatusChanged(false);
+void PacketCaptureController::setRingBufferSize(int size) {
+    ringBufferSize = size;
 }
 
-void PacketCaptureController::processCapturedPacketBatch(const QList<QPair<QByteArray, struct timeval>> &packets) {
-    if (!capturing || packets.isEmpty()) {
-        return;
-    }
-    
-    try {
-        QList<PacketInfo> processedPackets;
-        
-        for (const auto &packetPair : packets) {
-            // In spoofing mode, filter packets to only include target devices
-            if (spoofingMode && !isTargetPacket(packetPair.first)) {
-                continue;
-            }
-            
-            PacketInfo packet = createPacketInfo(packetPair.first, packetPair.second);
-            
-            // Validate packet
-            if (DataValidator::isValidPacketInfo(packet)) {
-                processedPackets.append(packet);
-                
-                // Update statistics
-                {
-                    QMutexLocker locker(&captureMutex);
-                    packetCount++;
-                    totalBytes += packet.packetLength;
-                }
-            }
-        }
-        
-        // Emit batch of processed packets
-        if (!processedPackets.isEmpty()) {
-            emit packetsBatchCaptured(processedPackets);
-        }
-        
-    } catch (const std::exception &e) {
-        qWarning() << "Error processing packet batch:" << e.what();
-    }
+bool PacketCaptureController::isRingBufferEnabled() const {
+    return ringBufferEnabled;
 }
 
-void PacketCaptureController::handleWorkerFinished() {
-    qDebug() << "Capture worker finished";
-    
-    {
-        QMutexLocker locker(&captureMutex);
-        capturing = false;
-    }
-    
-    emit captureStatusChanged(false);
+int PacketCaptureController::getRingBufferSize() const {
+    return ringBufferSize;
+}
+
+// Packet sampling configuration methods
+void PacketCaptureController::setSamplingMode(SamplingMode mode) {
+    samplingMode = mode;
+}
+
+void PacketCaptureController::setSamplingRate(int rate) {
+    samplingRate = rate;
+}
+
+void PacketCaptureController::setTargetRate(int packetsPerSecond) {
+    targetRate = packetsPerSecond;
+}
+
+PacketCaptureController::SamplingMode PacketCaptureController::getSamplingMode() const {
+    return samplingMode;
+}
+
+int PacketCaptureController::getSamplingRate() const {
+    return samplingRate;
+}
+
+int PacketCaptureController::getTargetRate() const {
+    return targetRate;
 }
 
 void PacketCaptureController::setupWorker() {
@@ -373,6 +354,129 @@ PacketInfo PacketCaptureController::createPacketInfo(const QByteArray &packetDat
     return packet;
 }
 
+void PacketCaptureController::processCapturedPacket(const QByteArray &packetData, const struct timeval &timestamp) {
+    if (!capturing) {
+        return;
+    }
+    
+    try {
+        
+        PacketInfo packet = createPacketInfo(packetData, timestamp);
+        
+        
+        // Validate packet
+        if (!DataValidator::isValidPacketInfo(packet)) {
+            qWarning() << "Invalid packet data:" << DataValidator::getLastError();
+            return;
+        }
+        
+        // Update statistics
+        {
+            QMutexLocker locker(&captureMutex);
+            packetCount++;
+            totalBytes += packet.packetLength;
+        }
+        
+        emit packetCaptured(packet);
+        
+    } catch (const std::exception &e) {
+        qWarning() << "Error processing packet:" << e.what();
+    }
+}
+
+void PacketCaptureController::handleWorkerError(const QString &error) {
+    qWarning() << "Capture worker error:" << error;
+    
+    {
+        QMutexLocker locker(&captureMutex);
+        capturing = false;
+    }
+    
+    emit captureError(error);
+    emit captureStatusChanged(false);
+}
+
+void PacketCaptureController::processCapturedPacketBatch(const QList<QPair<QByteArray, struct timeval>> &packets) {
+    if (!capturing || packets.isEmpty()) {
+        return;
+    }
+    
+    try {
+        QList<PacketInfo> processedPackets;
+        
+        for (const auto &packetPair : packets) {
+            // In spoofing mode, filter packets to only include target devices
+            if (spoofingMode && !isTargetPacket(packetPair.first)) {
+                continue;
+            }
+            
+            PacketInfo packet = createPacketInfo(packetPair.first, packetPair.second);
+            
+            // Validate packet
+            if (DataValidator::isValidPacketInfo(packet)) {
+                processedPackets.append(packet);
+                
+                // Update statistics
+                {
+                    QMutexLocker locker(&captureMutex);
+                    packetCount++;
+                    totalBytes += packet.packetLength;
+                }
+            }
+        }
+        
+        // Emit batch of processed packets
+        if (!processedPackets.isEmpty()) {
+            emit packetsBatchCaptured(processedPackets);
+            
+            // Update sampled packet count
+            {
+                QMutexLocker locker(&captureMutex);
+                sampledPacketCount += processedPackets.size();
+            }
+        }
+        
+    } catch (const std::exception &e) {
+        qWarning() << "Error processing packet batch:" << e.what();
+    }
+}
+
+void PacketCaptureController::handleWorkerFinished() {
+    qDebug() << "Capture worker finished";
+    
+    {
+        QMutexLocker locker(&captureMutex);
+        capturing = false;
+    }
+    
+    emit captureStatusChanged(false);
+}
+
+void PacketCaptureController::onMemoryLimitExceeded() {
+    // Apply backpressure when memory limits are exceeded
+    if (!backpressureActive) {
+        backpressureActive = true;
+        backpressureDelayMs = 100; // Start with 100ms delay
+        
+        if (captureWorker) {
+            QMetaObject::invokeMethod(captureWorker, "setBackpressureDelay",
+                                     Qt::QueuedConnection,
+                                     Q_ARG(int, backpressureDelayMs));
+        }
+        
+        emit backpressureApplied();
+    } else {
+        // Increase backpressure if already active
+        backpressureDelayMs = qMin(backpressureDelayMs * 2, 1000); // Max 1 second delay
+        
+        if (captureWorker) {
+            QMetaObject::invokeMethod(captureWorker, "setBackpressureDelay",
+                                     Qt::QueuedConnection,
+                                     Q_ARG(int, backpressureDelayMs));
+        }
+    }
+}
+
 // PacketCaptureWorker implementation
 PacketCaptureWorker::PacketCaptureWorker(const QString &interface)
     : QObject(nullptr) // No parent - will be moved to thread
@@ -381,6 +485,12 @@ PacketCaptureWorker::PacketCaptureWorker(const QString &interface)
     , shouldStop(false)
     , spoofingModeActive(false)
     , processTimer(new QTimer(this))
+    , backpressureDelayMs(0)
+    , samplingMode(NoSampling)
+    , samplingRate(100)
+    , targetRate(1000)
+    , packetCounter(0)
+    , lastSampleTime(0)
 {
     // Initialize error buffer
     memset(errorBuffer, 0, sizeof(errorBuffer));
@@ -453,12 +563,35 @@ void PacketCaptureWorker::setFilter(const QString &filter) {
     }
 }
 
+void PacketCaptureWorker::setBackpressureDelay(int delayMs) {
+    backpressureDelayMs = delayMs;
+}
 
+void PacketCaptureWorker::setSamplingMode(SamplingMode mode) {
+    samplingMode = mode;
+}
+
+void PacketCaptureWorker::setSamplingRate(int rate) {
+    samplingRate = rate;
+}
+
+void PacketCaptureWorker::setTargetRate(int packetsPerSecond) {
+    targetRate = packetsPerSecond;
+}
 
 void PacketCaptureWorker::processPackets() {
     if (!pcapHandle || shouldStop) {
         return;
     }
+    
+    // Apply backpressure delay if active
+    if (backpressureDelayMs > 0) {
+        // Sleep for the backpressure delay
+        QThread::msleep(backpressureDelayMs);
+    }
+    
+    // Get current time for rate-based sampling
+    qint64 currentTime = QDateTime::currentMSecsSinceEpoch();
     
     // Process up to 500 packets per timer tick for better batching
     QList<QPair<QByteArray, struct timeval>> batchedPackets;
@@ -470,9 +603,51 @@ void PacketCaptureWorker::processPackets() {
         int result = pcap_next_ex(pcapHandle, &header, &packetData);
         
         if (result == 1) {
-            // Packet captured successfully - add to batch
-            QByteArray packet(reinterpret_cast<const char*>(packetData), header->caplen);
-            batchedPackets.append(qMakePair(packet, header->ts));
+            // Check if we should sample this packet
+            bool shouldSample = true;
+            
+            switch (samplingMode) {
+            case CountBasedSampling:
+                // Sample every Nth packet
+                packetCounter++;
+                shouldSample = (packetCounter % samplingRate == 0);
+                break;
+                
+            case RateBasedSampling: {
+                // Sample to maintain target rate
+                packetCounter++;
+                
+                // Calculate current rate
+                if (lastSampleTime == 0) {
+                    lastSampleTime = currentTime;
+                }
+                
+                qint64 timeElapsed = currentTime - lastSampleTime;
+                if (timeElapsed > 0) {
+                    int currentRate = (packetCounter * 1000) / timeElapsed;
+                    shouldSample = (currentRate <= targetRate);
+                    
+                    // Reset counter periodically
+                    if (timeElapsed > 1000) {
+                        packetCounter = 0;
+                        lastSampleTime = currentTime;
+                    }
+                }
+                break;
+            }
+                
+            case NoSampling:
+            default:
+                // Sample all packets
+                shouldSample = true;
+                break;
+            }
+            
+            if (shouldSample) {
+                // Packet captured successfully - add to batch
+                QByteArray packet(reinterpret_cast<const char*>(packetData), header->caplen);
+                batchedPackets.append(qMakePair(packet, header->ts));
+            }
         } else if (result == 0) {
             // Timeout - no packet available
             break;

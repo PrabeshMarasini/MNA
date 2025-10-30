@@ -161,6 +161,9 @@ void MainWindow::setupUI()
     // Create packet table view
     packetTable = new PacketTableView;
     
+    // Enable virtual scrolling for better performance with large packet lists
+    packetTable->setVirtualScrollingEnabled(true);
+    
     // Defer model setup for faster startup
     QTimer::singleShot(0, this, [this]() {
         // Set up filter proxy model
@@ -187,6 +190,9 @@ void MainWindow::setupUI()
         displayController->setViews(packetTable, hexView, protocolView);
         displayController->setModels(packetModel, protocolModel);
     });
+    
+    // Connect memory limit exceeded signal
+    connect(packetModel, &PacketModel::memoryLimitExceeded, this, &MainWindow::onMemoryLimitExceeded);
     
     qDebug() << "MainWindow: UI components created";
 }
@@ -397,6 +403,12 @@ void MainWindow::connectSignals()
             this, &MainWindow::onDisplayError);
     
     // Capture controller signals are connected after creation in constructor
+    if (captureController) {
+        connect(captureController, &PacketCaptureController::backpressureApplied,
+                this, &MainWindow::onBackpressureApplied);
+        connect(captureController, &PacketCaptureController::samplingApplied,
+                this, &MainWindow::onSamplingApplied);
+    }
     
     // Connect model signals
     connect(packetModel, &PacketModel::rowsInserted,
@@ -588,6 +600,19 @@ void MainWindow::onNewPacketsBatchCaptured(const QList<PacketInfo> &packets)
         packetTable->setAutoScroll(true);
     }
     
+    // Adaptive throttling: adjust UI update frequency based on batch size
+    if (packets.size() > 1000) {
+        // Large batch - reduce UI update frequency
+        if (uiUpdateTimer->interval() < 1000) {
+            uiUpdateTimer->setInterval(1000);
+        }
+    } else if (packets.size() > 500) {
+        // Medium batch - moderate UI update frequency
+        if (uiUpdateTimer->interval() < 500) {
+            uiUpdateTimer->setInterval(500);
+        }
+    }
+    
     // Start throttled UI updates if not already running
     if (!uiUpdateTimer->isActive()) {
         uiUpdateTimer->start();
@@ -671,6 +696,27 @@ void MainWindow::performThrottledUIUpdate()
     
     // Process any pending events to keep UI responsive
     QApplication::processEvents(QEventLoop::ExcludeUserInputEvents, 10);
+    
+    // Adaptive throttling based on packet rate
+    static int lastPacketCount = 0;
+    int currentPacketCount = packetModel->getPacketCount();
+    int packetsPerSecond = currentPacketCount - lastPacketCount;
+    lastPacketCount = currentPacketCount;
+    
+    // Adjust UI update frequency based on packet rate
+    if (packetsPerSecond > 10000) {
+        // Very high rate - update every 2 seconds
+        uiUpdateTimer->setInterval(2000);
+    } else if (packetsPerSecond > 5000) {
+        // High rate - update every 1 second
+        uiUpdateTimer->setInterval(1000);
+    } else if (packetsPerSecond > 1000) {
+        // Medium rate - update every 500ms
+        uiUpdateTimer->setInterval(500);
+    } else {
+        // Low rate - update every 200ms
+        uiUpdateTimer->setInterval(200);
+    }
     
     // Stop the timer if capture is not active
     if (!isCapturing) {
@@ -1323,4 +1369,46 @@ void MainWindow::onSpeedTestRequested()
     
     // Clean up
     speedTestDialog->deleteLater();
+}
+
+void MainWindow::onMemoryLimitExceeded()
+{
+    LOG_WARNING("Memory limit exceeded, applying retention policy");
+    
+    // Show warning to user
+    statusBar()->showMessage("High memory usage detected, applying retention policy", 5000);
+    
+    // Apply ring buffer mode to limit memory usage
+    packetModel->setRetentionMode(RingBufferRetention);
+    packetModel->setMaxPackets(50000); // Limit to 50K packets
+    
+    // Also enable ring buffer in capture controller
+    if (captureController) {
+        captureController->setRingBufferEnabled(true);
+        captureController->setRingBufferSize(50000);
+    }
+}
+
+void MainWindow::onBackpressureApplied()
+{
+    LOG_INFO("Backpressure applied to packet capture");
+    
+    // Show notification to user
+    statusBar()->showMessage("High packet rate detected, applying capture throttling", 3000);
+    
+    // Update UI to indicate backpressure is active
+    captureStatusLabel->setText("Status: Capturing (Throttled)");
+    captureStatusLabel->setStyleSheet("color: orange; font-weight: bold;");
+}
+
+void MainWindow::onSamplingApplied()
+{
+    LOG_INFO("Packet sampling applied to reduce capture load");
+    
+    // Show notification to user
+    statusBar()->showMessage("High packet rate detected, applying packet sampling", 3000);
+    
+    // Update UI to indicate sampling is active
+    captureStatusLabel->setText("Status: Capturing (Sampling)");
+    captureStatusLabel->setStyleSheet("color: purple; font-weight: bold;");
 }
