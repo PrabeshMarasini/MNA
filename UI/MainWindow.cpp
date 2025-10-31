@@ -11,6 +11,8 @@
 #include "LatencyTestWidget.h"
 #include "PortScanWidget.h"
 #include "MacLookupWidget.h"
+#include "DnsLookupWidget.h"
+#include "TracerouteWidget.h"
 #include "Models/PacketModel.h"
 #include "Models/ProtocolTreeModel.h"
 #include "Models/PacketFilterProxyModel.h"
@@ -283,6 +285,18 @@ void MainWindow::setupMenuBar()
     macLookupAction->setIcon(style()->standardIcon(QStyle::SP_ComputerIcon));
     connect(macLookupAction, &QAction::triggered, this, &MainWindow::onMacLookupRequested);
     toolsMenu->addAction(macLookupAction);
+    
+    QAction *dnsLookupAction = new QAction("&DNS Lookup", this);
+    dnsLookupAction->setShortcut(QKeySequence("Ctrl+D"));
+    dnsLookupAction->setIcon(style()->standardIcon(QStyle::SP_FileDialogDetailedView));
+    connect(dnsLookupAction, &QAction::triggered, this, &MainWindow::onDnsLookupRequested);
+    toolsMenu->addAction(dnsLookupAction);
+    
+    QAction *tracerouteAction = new QAction("&Traceroute", this);
+    tracerouteAction->setShortcut(QKeySequence("Ctrl+T"));
+    tracerouteAction->setIcon(style()->standardIcon(QStyle::SP_ArrowRight));
+    connect(tracerouteAction, &QAction::triggered, this, &MainWindow::onTracerouteRequested);
+    toolsMenu->addAction(tracerouteAction);
     
 
     
@@ -1485,6 +1499,70 @@ void MainWindow::onMacLookupRequested()
     
     // Clean up
     macLookupDialog->deleteLater();
+}
+
+void MainWindow::onDnsLookupRequested()
+{
+    // Create DNS lookup dialog
+    QDialog *dnsLookupDialog = new QDialog(this);
+    dnsLookupDialog->setWindowTitle("DNS Lookup Tool");
+    dnsLookupDialog->setModal(true);
+    dnsLookupDialog->resize(800, 600);
+    
+    // Create layout
+    QVBoxLayout *layout = new QVBoxLayout(dnsLookupDialog);
+    
+    // Create DNS lookup widget
+    DnsLookupWidget *dnsLookupWidget = new DnsLookupWidget(dnsLookupDialog);
+    layout->addWidget(dnsLookupWidget);
+    
+    // Add close button
+    QHBoxLayout *buttonLayout = new QHBoxLayout();
+    buttonLayout->addStretch();
+    
+    QPushButton *closeButton = new QPushButton("Close", dnsLookupDialog);
+    connect(closeButton, &QPushButton::clicked, dnsLookupDialog, &QDialog::accept);
+    buttonLayout->addWidget(closeButton);
+    
+    layout->addLayout(buttonLayout);
+    
+    // Show dialog
+    dnsLookupDialog->exec();
+    
+    // Clean up
+    dnsLookupDialog->deleteLater();
+}
+
+void MainWindow::onTracerouteRequested()
+{
+    // Create traceroute dialog
+    QDialog *tracerouteDialog = new QDialog(this);
+    tracerouteDialog->setWindowTitle("Network Traceroute Tool");
+    tracerouteDialog->setModal(true);
+    tracerouteDialog->resize(900, 700);
+    
+    // Create layout
+    QVBoxLayout *layout = new QVBoxLayout(tracerouteDialog);
+    
+    // Create traceroute widget
+    TracerouteWidget *tracerouteWidget = new TracerouteWidget(tracerouteDialog);
+    layout->addWidget(tracerouteWidget);
+    
+    // Add close button
+    QHBoxLayout *buttonLayout = new QHBoxLayout();
+    buttonLayout->addStretch();
+    
+    QPushButton *closeButton = new QPushButton("Close", tracerouteDialog);
+    connect(closeButton, &QPushButton::clicked, tracerouteDialog, &QDialog::accept);
+    buttonLayout->addWidget(closeButton);
+    
+    layout->addLayout(buttonLayout);
+    
+    // Show dialog
+    tracerouteDialog->exec();
+    
+    // Clean up
+    tracerouteDialog->deleteLater();
 }
 
 void MainWindow::onMemoryLimitExceeded()

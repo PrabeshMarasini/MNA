@@ -91,6 +91,12 @@ private slots:
     
     // MAC address lookup functionality
     void onMacLookupRequested();
+    
+    // DNS lookup functionality
+    void onDnsLookupRequested();
+    
+    // Traceroute functionality
+    void onTracerouteRequested();
 
 
 protected:
