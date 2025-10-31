@@ -45,6 +45,7 @@ set(PACKETCAPTURE_SOURCES
     src/internetspeed/speedtest.c
     src/latency/latency.c
     src/portscan/portscan.c
+    src/mac/mac.c
 )
 
 # Create static library for packet capture backend
@@ -79,6 +80,7 @@ set(GUI_SOURCES
     UI/SpeedTestWidget.cpp
     UI/LatencyTestWidget.cpp
     UI/PortScanWidget.cpp
+    UI/MacLookupWidget.cpp
     UI/Models/PacketModel.cpp
     UI/Models/ProtocolTreeModel.cpp
     UI/Models/PacketFilterProxyModel.cpp
@@ -114,6 +116,7 @@ set(GUI_HEADERS
     UI/SpeedTestWidget.h
     UI/LatencyTestWidget.h
     UI/PortScanWidget.h
+    UI/MacLookupWidget.h
     UI/Models/PacketModel.h
     UI/Models/ProtocolTreeModel.h
     UI/Models/PacketFilterProxyModel.h
@@ -196,6 +199,22 @@ add_executable(portscan_tool
 target_compile_options(portscan_tool PRIVATE
     -Wall -Wextra
 )
+
+# Standalone MAC lookup executable
+add_executable(mac_tool
+    src/mac/mac_main.c
+    src/mac/mac.c
+)
+
+target_compile_options(mac_tool PRIVATE
+    -Wall -Wextra
+)
+
+# Link curl library for MAC tool
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(CURL REQUIRED libcurl)
+target_link_libraries(mac_tool PRIVATE ${CURL_LIBRARIES})
+target_compile_options(mac_tool PRIVATE ${CURL_CFLAGS_OTHER})
 
 # Testing (keeping only the C protocol tests)
 enable_testing()
