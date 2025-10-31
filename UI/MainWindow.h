@@ -88,6 +88,9 @@ private slots:
     
     // Port scanner functionality
     void onPortScanRequested();
+    
+    // MAC address lookup functionality
+    void onMacLookupRequested();
 
 
 protected:

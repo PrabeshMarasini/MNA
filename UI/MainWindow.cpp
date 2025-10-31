@@ -10,6 +10,7 @@
 #include "SpeedTestWidget.h"
 #include "LatencyTestWidget.h"
 #include "PortScanWidget.h"
+#include "MacLookupWidget.h"
 #include "Models/PacketModel.h"
 #include "Models/ProtocolTreeModel.h"
 #include "Models/PacketFilterProxyModel.h"
@@ -276,6 +277,12 @@ void MainWindow::setupMenuBar()
     portScanAction->setIcon(style()->standardIcon(QStyle::SP_FileDialogDetailedView));
     connect(portScanAction, &QAction::triggered, this, &MainWindow::onPortScanRequested);
     toolsMenu->addAction(portScanAction);
+    
+    QAction *macLookupAction = new QAction("&MAC Address Lookup", this);
+    macLookupAction->setShortcut(QKeySequence("Ctrl+M"));
+    macLookupAction->setIcon(style()->standardIcon(QStyle::SP_ComputerIcon));
+    connect(macLookupAction, &QAction::triggered, this, &MainWindow::onMacLookupRequested);
+    toolsMenu->addAction(macLookupAction);
     
 
     
@@ -1446,6 +1453,38 @@ void MainWindow::onPortScanRequested()
     
     // Clean up
     portScanDialog->deleteLater();
+}
+
+void MainWindow::onMacLookupRequested()
+{
+    // Create MAC lookup dialog
+    QDialog *macLookupDialog = new QDialog(this);
+    macLookupDialog->setWindowTitle("MAC Address Vendor Lookup");
+    macLookupDialog->setModal(true);
+    macLookupDialog->resize(700, 600);
+    
+    // Create layout
+    QVBoxLayout *layout = new QVBoxLayout(macLookupDialog);
+    
+    // Create MAC lookup widget
+    MacLookupWidget *macLookupWidget = new MacLookupWidget(macLookupDialog);
+    layout->addWidget(macLookupWidget);
+    
+    // Add close button
+    QHBoxLayout *buttonLayout = new QHBoxLayout();
+    buttonLayout->addStretch();
+    
+    QPushButton *closeButton = new QPushButton("Close", macLookupDialog);
+    connect(closeButton, &QPushButton::clicked, macLookupDialog, &QDialog::accept);
+    buttonLayout->addWidget(closeButton);
+    
+    layout->addLayout(buttonLayout);
+    
+    // Show dialog
+    macLookupDialog->exec();
+    
+    // Clean up
+    macLookupDialog->deleteLater();
 }
 
 void MainWindow::onMemoryLimitExceeded()
