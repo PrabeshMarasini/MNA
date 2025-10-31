@@ -46,6 +46,8 @@ set(PACKETCAPTURE_SOURCES
     src/latency/latency.c
     src/portscan/portscan.c
     src/mac/mac.c
+    src/dns/dns.c
+    src/traceroute/traceroute.c
 )
 
 # Create static library for packet capture backend
@@ -81,6 +83,8 @@ set(GUI_SOURCES
     UI/LatencyTestWidget.cpp
     UI/PortScanWidget.cpp
     UI/MacLookupWidget.cpp
+    UI/DnsLookupWidget.cpp
+    UI/TracerouteWidget.cpp
     UI/Models/PacketModel.cpp
     UI/Models/ProtocolTreeModel.cpp
     UI/Models/PacketFilterProxyModel.cpp
@@ -117,6 +121,8 @@ set(GUI_HEADERS
     UI/LatencyTestWidget.h
     UI/PortScanWidget.h
     UI/MacLookupWidget.h
+    UI/DnsLookupWidget.h
+    UI/TracerouteWidget.h
     UI/Models/PacketModel.h
     UI/Models/ProtocolTreeModel.h
     UI/Models/PacketFilterProxyModel.h
@@ -215,6 +221,26 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(CURL REQUIRED libcurl)
 target_link_libraries(mac_tool PRIVATE ${CURL_LIBRARIES})
 target_compile_options(mac_tool PRIVATE ${CURL_CFLAGS_OTHER})
+
+# Standalone DNS lookup executable
+add_executable(dns_tool
+    src/dns/dns_main.c
+    src/dns/dns.c
+)
+
+target_compile_options(dns_tool PRIVATE
+    -Wall -Wextra
+)
+
+# Standalone traceroute executable
+add_executable(traceroute_tool
+    src/traceroute/traceroute_main.c
+    src/traceroute/traceroute.c
+)
+
+target_compile_options(traceroute_tool PRIVATE
+    -Wall -Wextra
+)
 
 # Testing (keeping only the C protocol tests)
 enable_testing()
