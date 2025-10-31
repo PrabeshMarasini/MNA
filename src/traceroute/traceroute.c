@@ -46,7 +46,7 @@ static void create_icmp_packet(char *packet, int packet_id, int sequence) {
     icmp_hdr->icmp_cksum = 0;
     
     char *data = (char*)(icmp_hdr + 1);
-    for (int i = 0; i < PACKET_SIZE - sizeof(struct icmp); i++) {
+    for (int i = 0; i < (int)(PACKET_SIZE - sizeof(struct icmp)); i++) {
         data[i] = i & 0xFF;
     }
     
@@ -98,7 +98,7 @@ static int receive_icmp_response(int sock, int packet_id, int sequence, struct t
             struct ip *ip_hdr = (struct ip*)buffer;
             int ip_hdr_len = ip_hdr->ip_hl * 4;
             
-            if (bytes_received < ip_hdr_len + sizeof(struct icmp)) {
+            if (bytes_received < (ssize_t)(ip_hdr_len + sizeof(struct icmp))) {
                 return -1;
             }
             
@@ -108,7 +108,7 @@ static int receive_icmp_response(int sock, int packet_id, int sequence, struct t
             if (icmp_hdr->icmp_type == ICMP_ECHOREPLY && icmp_hdr->icmp_id == packet_id && icmp_hdr->icmp_seq == sequence) {
                 return 0;
             } else if (icmp_hdr->icmp_type == ICMP_TIME_EXCEEDED) {
-                if (bytes_received < ip_hdr_len + 8 + sizeof(struct ip) + sizeof(struct icmp)) {
+                if (bytes_received < (ssize_t)(ip_hdr_len + 8 + sizeof(struct ip) + sizeof(struct icmp))) {
                     return 1;
                 }
                 
@@ -116,7 +116,7 @@ static int receive_icmp_response(int sock, int packet_id, int sequence, struct t
                 struct ip *orig_ip_hdr = (struct ip*)(buffer + ip_hdr_len + 8);
                 int orig_ip_hdr_len = orig_ip_hdr->ip_hl * 4;
                 
-                if (bytes_received < ip_hdr_len + 8 + orig_ip_hdr_len + sizeof(struct icmp)) {
+                if (bytes_received < (ssize_t)(ip_hdr_len + 8 + orig_ip_hdr_len + sizeof(struct icmp))) {
                     return 1; 
                 }
                 
@@ -205,7 +205,6 @@ int perform_traceroute(const char* target_host, TracerouteResult* results) {
         printf("%2d ", ttl);
         fflush(stdout);
         
-        int hop_complete = 0;
         int target_reached = 0;
         
         // Send 3 probes
@@ -232,7 +231,6 @@ int perform_traceroute(const char* target_host, TracerouteResult* results) {
                 reverse_dns_lookup(response_addr.sin_addr, hop->hostname, sizeof(hop->hostname));
                 printf(" %s (%s)  %.3f ms", hop->hostname, hop->ip_address, response_time);
                 target_reached = 1;
-                hop_complete = 1;
             } else if (result == 1) {
                 hop->response_times[probe] = response_time;
                 hop->status[probe] = 0; // Success
@@ -240,7 +238,6 @@ int perform_traceroute(const char* target_host, TracerouteResult* results) {
                 strncpy(hop->ip_address, inet_ntoa(response_addr.sin_addr), sizeof(hop->ip_address) - 1);
                 reverse_dns_lookup(response_addr.sin_addr, hop->hostname, sizeof(hop->hostname));
                 printf(" %s (%s)  %.3f ms", hop->hostname, hop->ip_address, response_time);
-                hop_complete = 1;
             } else if (result == -2) {
                 hop->status[probe] = 1; // Timeout
                 printf(" *");
