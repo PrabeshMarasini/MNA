@@ -15,7 +15,7 @@ int run_lan_scan(scan_result_t *result) {
     result->count = 0;
     
     // Run the lan_scan.sh script
-    fp = popen("./lan_scan.sh", "r");
+    fp = popen("src/packetcapture/lan_scan.sh", "r");
     if (fp == NULL) {
         printf("Error: Could not run lan_scan.sh\n");
         printf("Make sure lan_scan.sh is in the current directory and executable\n");
