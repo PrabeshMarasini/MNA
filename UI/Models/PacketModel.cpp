@@ -22,6 +22,8 @@ PacketModel::PacketModel(QObject *parent)
     , memoryCheckTimer(new QTimer(this))
     , compressionEnabled(false)
     , compressionThreshold(1024)  // Compress packets larger than 1KB
+    , currentTimeZoneMode(UTC_TIME)
+    , currentCustomTimeZone(QTimeZone::utc())
 {
     // Reserve memory for expected packet count to prevent frequent reallocations
     packets.reserve(MAX_PACKETS_IN_MEMORY);
@@ -57,7 +59,7 @@ QVariant PacketModel::data(const QModelIndex &index, int role) const {
         case SerialNumber:
             return packet.serialNumber;
         case Timestamp:
-            return packet.timestamp.toString("hh:mm:ss.zzz");
+            return formatTimestamp(packet.timestamp);
         case SourceIP:
             return packet.sourceIP;
         case DestinationIP:
@@ -441,4 +443,42 @@ void PacketModel::setCompressionThreshold(int bytes) {
 
 int PacketModel::getCompressionThreshold() const {
     return compressionThreshold;
+}
+// Timezone support methods
+void PacketModel::refreshTimestamps(TimeZoneMode mode, const QTimeZone &customZone) {
+    currentTimeZoneMode = mode;
+    currentCustomTimeZone = customZone;
+    
+    // Emit data changed for timestamp column to refresh display
+    if (!packets.isEmpty()) {
+        QModelIndex topLeft = index(0, Timestamp);
+        QModelIndex bottomRight = index(packets.size() - 1, Timestamp);
+        emit dataChanged(topLeft, bottomRight, {Qt::DisplayRole});
+    }
+}
+
+void PacketModel::setTimeZoneMode(TimeZoneMode mode, const QTimeZone &customZone) {
+    currentTimeZoneMode = mode;
+    currentCustomTimeZone = customZone;
+}
+
+QString PacketModel::formatTimestamp(const QDateTime &timestamp) const {
+    QDateTime displayTime;
+    
+    switch (currentTimeZoneMode) {
+        case UTC_TIME:
+            displayTime = timestamp.toUTC();
+            break;
+        case LOCAL_TIME:
+            displayTime = timestamp.toLocalTime();
+            break;
+        case CUSTOM_TIME:
+            displayTime = timestamp.toTimeZone(currentCustomTimeZone);
+            break;
+        default:
+            displayTime = timestamp.toUTC();
+            break;
+    }
+    
+    return displayTime.toString("hh:mm:ss.zzz");
 }

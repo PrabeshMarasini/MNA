@@ -8,6 +8,7 @@
 #include "DeviceSelectionDialog.h"
 #include "ARPSpoofingController.h"
 #include "SpeedTestWidget.h"
+#include "TimeSettingsDialog.h"
 #include "LatencyTestWidget.h"
 #include "PortScanWidget.h"
 #include "MacLookupWidget.h"
@@ -82,6 +83,8 @@ MainWindow::MainWindow(const QString &interface, QWidget *parent)
     , totalBytes(0)
     , spoofingActive(false)
     , arpSpoofingController(nullptr)
+    , currentTimeZoneMode(UTC_TIME)
+    , customTimeZone(QTimeZone::utc())
 
 {
     try {
@@ -312,6 +315,14 @@ void MainWindow::setupMenuBar()
 
     connect(collapseAllAction, &QAction::triggered, protocolView, &ProtocolTreeView::collapseAll);
     viewMenu->addAction(collapseAllAction);
+    
+    // Settings menu
+    QMenu *settingsMenu = menuBar()->addMenu("&Settings");
+    
+    QAction *timeSettingsAction = new QAction("&Time Settings...", this);
+    timeSettingsAction->setIcon(style()->standardIcon(QStyle::SP_ComputerIcon));
+    connect(timeSettingsAction, &QAction::triggered, this, &MainWindow::onTimeSettingsRequested);
+    settingsMenu->addAction(timeSettingsAction);
     
     qDebug() << "MainWindow: Menu bar setup completed";
 }
@@ -1563,6 +1574,31 @@ void MainWindow::onTracerouteRequested()
     
     // Clean up
     tracerouteDialog->deleteLater();
+}
+
+void MainWindow::onTimeSettingsRequested()
+{
+    TimeSettingsDialog *dialog = new TimeSettingsDialog(this);
+    
+    // Set current settings
+    dialog->setCurrentSettings(currentTimeZoneMode, customTimeZone);
+    
+    if (dialog->exec() == QDialog::Accepted) {
+        // Update settings
+        currentTimeZoneMode = dialog->getSelectedMode();
+        if (currentTimeZoneMode == CUSTOM_TIME) {
+            customTimeZone = dialog->getSelectedCustomTimeZone();
+        }
+        
+        // Refresh the packet table to show timestamps in new timezone
+        if (packetModel) {
+            packetModel->refreshTimestamps(currentTimeZoneMode, customTimeZone);
+        }
+        
+        qDebug() << "Time zone settings updated. Mode:" << currentTimeZoneMode;
+    }
+    
+    dialog->deleteLater();
 }
 
 void MainWindow::onMemoryLimitExceeded()

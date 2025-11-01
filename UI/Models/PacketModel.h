@@ -7,8 +7,10 @@
 #include <QByteArray>
 #include <QString>
 #include <QTimer>
+#include <QTimeZone>
 
 #include "ProtocolTreeModel.h"
+#include "../TimeZoneSettings.h"
 
 // Maximum packets to keep in memory before applying retention policy
 static const int MAX_PACKETS_IN_MEMORY = 100000;
@@ -92,6 +94,10 @@ public:
     // Ring buffer operations
     void enableRingBuffer(int bufferSize);
     bool isRingBufferEnabled() const;
+    
+    // Timezone support
+    void refreshTimestamps(TimeZoneMode mode, const QTimeZone &customZone = QTimeZone::utc());
+    void setTimeZoneMode(TimeZoneMode mode, const QTimeZone &customZone = QTimeZone::utc());
 
 signals:
     void packetAdded(int index);
@@ -121,9 +127,14 @@ private:
     
     QTimer *memoryCheckTimer;
     
+    // Timezone settings
+    TimeZoneMode currentTimeZoneMode;
+    QTimeZone currentCustomTimeZone;
+    
     void enforceRetentionPolicy();
     void removeOldPackets();
     void removeExcessPackets();
+    QString formatTimestamp(const QDateTime &timestamp) const;
 };
 
 #endif // PACKETMODEL_H
