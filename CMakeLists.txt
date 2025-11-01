@@ -85,6 +85,7 @@ set(GUI_SOURCES
     UI/MacLookupWidget.cpp
     UI/DnsLookupWidget.cpp
     UI/TracerouteWidget.cpp
+    UI/TimeSettingsDialog.cpp
     UI/Models/PacketModel.cpp
     UI/Models/ProtocolTreeModel.cpp
     UI/Models/PacketFilterProxyModel.cpp
@@ -123,6 +124,7 @@ set(GUI_HEADERS
     UI/MacLookupWidget.h
     UI/DnsLookupWidget.h
     UI/TracerouteWidget.h
+    UI/TimeSettingsDialog.h
     UI/Models/PacketModel.h
     UI/Models/ProtocolTreeModel.h
     UI/Models/PacketFilterProxyModel.h
