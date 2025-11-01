@@ -14,6 +14,7 @@
 #include <sys/time.h>
 #include "Models/PacketModel.h"
 #include "PacketFilterWidget.h"
+#include "TimeZoneSettings.h"
 
 
 class PacketTableView;
@@ -97,6 +98,9 @@ private slots:
     
     // Traceroute functionality
     void onTracerouteRequested();
+    
+    // Settings functionality
+    void onTimeSettingsRequested();
 
 
 protected:
@@ -163,6 +167,10 @@ private:
     qint64 totalBytes;
     bool spoofingActive;
     QList<QString> spoofedTargets;
+    
+    // Settings
+    TimeZoneMode currentTimeZoneMode;
+    QTimeZone customTimeZone;
 };
 
 #endif // MAINWINDOW_H
