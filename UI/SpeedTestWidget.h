@@ -68,6 +68,7 @@ public:
 public slots:
     void runSpeedTest();
     void cancelTest();
+    void forceCleanup();
 
 private slots:
     void onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus);

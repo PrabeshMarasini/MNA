@@ -98,6 +98,11 @@ public:
     void setUserNotificationsEnabled(bool enabled) { m_userNotificationsEnabled = enabled; }
 
     /**
+     * @brief Enable/disable high-speed mode (minimal logging to prevent crashes)
+     */
+    void setHighSpeedMode(bool enabled) { m_highSpeedMode = enabled; }
+
+    /**
      * @brief Log error with full information
      */
     void logError(ErrorLevel level, ErrorCategory category, const QString &message,
@@ -252,6 +257,7 @@ private:
     QString m_logFilePath;
     ErrorLevel m_logLevel;
     bool m_userNotificationsEnabled;
+    bool m_highSpeedMode;
     
     QList<ErrorInfo> m_errorHistory;
     mutable QMutex m_mutex;

@@ -15,6 +15,7 @@ ErrorHandler::ErrorHandler(QObject *parent)
     , m_loggingEnabled(true)
     , m_logLevel(Info)
     , m_userNotificationsEnabled(true)
+    , m_highSpeedMode(false)
     , m_logFile(nullptr)
     , m_logStream(nullptr)
 {
@@ -123,14 +124,22 @@ void ErrorHandler::logError(ErrorLevel level, ErrorCategory category, const QStr
         return;
     }
     
+    // In high-speed mode, only log critical errors and avoid complex operations
+    if (m_highSpeedMode && level < Critical) {
+        return;
+    }
+    
     ErrorInfo error;
     error.level = level;
     error.category = category;
     error.message = message;
     error.details = details;
     error.source = source;
-    // Temporary fix for locale crash - use simple timestamp
-    error.timestamp = QDateTime::fromSecsSinceEpoch(time(nullptr), QTimeZone::utc());
+    
+    // Ultra-safe timestamp creation - avoid all Qt datetime operations during high-speed processing
+    // Use a simple invalid timestamp that will be handled safely in formatErrorMessage
+    error.timestamp = QDateTime(); // Invalid timestamp - will be handled safely
+    
     error.context = context;
     error.errorCode = errorCode;
     
@@ -465,34 +474,77 @@ void ErrorHandler::handleQtMessage(QtMsgType type, const QMessageLogContext &con
 
 void ErrorHandler::writeToLogFile(const ErrorInfo &error)
 {
+    // Thread-safe logging with mutex protection
+    QMutexLocker locker(&m_mutex);
+    
     if (!m_logStream) return;
     
-    *m_logStream << formatErrorMessage(error) << "\n";
-    m_logStream->flush();
+    try {
+        QString message = formatErrorMessage(error);
+        *m_logStream << message << "\n";
+        m_logStream->flush();
+    } catch (...) {
+        // If logging fails, try a simple fallback
+        try {
+            *m_logStream << "ERROR: Failed to format log message\n";
+            m_logStream->flush();
+        } catch (...) {
+            // If even the fallback fails, just ignore to prevent crash
+        }
+    }
 }
 
 QString ErrorHandler::formatErrorMessage(const ErrorInfo &error) const
 {
-    QString formatted = QString("[%1] [%2] [%3] %4")
-                       .arg(error.timestamp.toString(Qt::ISODate))
-                       .arg(errorLevelToString(error.level))
-                       .arg(errorCategoryToString(error.category))
-                       .arg(error.message);
-    
-    if (!error.details.isEmpty()) {
-        formatted += QString(" - Details: %1").arg(error.details);
+    // Ultra-safe timestamp handling - avoid all datetime/locale operations during crashes
+    QString timestampStr;
+    if (error.timestamp.isValid()) {
+        try {
+            timestampStr = error.timestamp.toString(Qt::ISODate);
+        } catch (...) {
+            // If Qt datetime fails, use simple counter
+            static int errorCounter = 0;
+            timestampStr = QString("ERR_%1").arg(++errorCounter);
+        }
+    } else {
+        // Use simple counter to completely avoid locale/timezone issues
+        static int errorCounter = 0;
+        timestampStr = QString("ERR_%1").arg(++errorCounter);
     }
     
-    if (!error.source.isEmpty()) {
-        formatted += QString(" - Source: %1").arg(error.source);
+    // Safely handle string formatting to prevent crashes
+    QString formatted;
+    try {
+        formatted = QString("[%1] [%2] [%3] %4")
+                   .arg(timestampStr)
+                   .arg(errorLevelToString(error.level))
+                   .arg(errorCategoryToString(error.category))
+                   .arg(error.message);
+    } catch (...) {
+        // Fallback formatting if QString operations fail
+        formatted = QString("ERROR: Failed to format error message - ") + error.message;
     }
     
-    if (!error.context.isEmpty()) {
-        formatted += QString(" - Context: %1").arg(error.context);
-    }
-    
-    if (error.errorCode != 0) {
-        formatted += QString(" - Code: %1").arg(error.errorCode);
+    // Safely append additional information
+    try {
+        if (!error.details.isEmpty()) {
+            formatted += QString(" - Details: %1").arg(error.details);
+        }
+        
+        if (!error.source.isEmpty()) {
+            formatted += QString(" - Source: %1").arg(error.source);
+        }
+        
+        if (!error.context.isEmpty()) {
+            formatted += QString(" - Context: %1").arg(error.context);
+        }
+        
+        if (error.errorCode != 0) {
+            formatted += QString(" - Code: %1").arg(error.errorCode);
+        }
+    } catch (...) {
+        // If appending fails, just use what we have
+        formatted += " [Additional details truncated due to formatting error]";
     }
     
     return formatted;

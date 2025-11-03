@@ -109,6 +109,9 @@ MainWindow::MainWindow(const QString &interface, QWidget *parent)
             // Connect settings signals
             connect(SettingsManager::instance(), &SettingsManager::settingChanged,
                     this, &MainWindow::onSettingChanged);
+            
+            // Enable high-speed mode to prevent locale/timezone crashes during packet processing
+            ErrorHandler::instance()->setHighSpeedMode(true);
         });
         
         setWindowTitle(QString("Packet Capture GUI - Interface: %1").arg(interface));
@@ -150,8 +153,66 @@ MainWindow::MainWindow(const QString &interface, QWidget *parent)
 
 MainWindow::~MainWindow()
 {
-    if (isCapturing) {
+    // Non-blocking cleanup to prevent delayed destruction crashes
+    
+    // Immediately stop timers to prevent further callbacks
+    if (statisticsTimer) {
+        statisticsTimer->stop();
+        disconnect(statisticsTimer, nullptr, this, nullptr);
+    }
+    if (uiUpdateTimer) {
+        uiUpdateTimer->stop();
+        disconnect(uiUpdateTimer, nullptr, this, nullptr);
+    }
+    
+    // Stop capture without waiting
+    if (isCapturing && captureController) {
+        // Disconnect signals first to prevent callbacks during destruction
+        disconnect(captureController, nullptr, this, nullptr);
+        
+        // Signal stop but don't wait for completion
         captureController->stopCapture();
+        
+        // Schedule controller cleanup for later to avoid blocking
+        if (captureController->parent() == this) {
+            captureController->setParent(nullptr);
+            captureController->deleteLater();
+        }
+    }
+    
+    // Stop spoofing without waiting
+    if (spoofingActive && arpSpoofingController) {
+        disconnect(arpSpoofingController, nullptr, this, nullptr);
+        arpSpoofingController->stopSpoofing();
+        
+        if (arpSpoofingController->parent() == this) {
+            arpSpoofingController->setParent(nullptr);
+            arpSpoofingController->deleteLater();
+        }
+    }
+    
+    // Disconnect all error handler signals to prevent callbacks
+    if (ErrorHandler::instance()) {
+        disconnect(ErrorHandler::instance(), nullptr, this, nullptr);
+    }
+    if (MemoryManager::instance()) {
+        disconnect(MemoryManager::instance(), nullptr, this, nullptr);
+    }
+    if (SettingsManager::instance()) {
+        disconnect(SettingsManager::instance(), nullptr, this, nullptr);
+    }
+    
+    // Disconnect display controller to prevent callbacks
+    if (displayController) {
+        disconnect(displayController, nullptr, this, nullptr);
+    }
+    
+    // Disconnect model signals
+    if (packetModel) {
+        disconnect(packetModel, nullptr, this, nullptr);
+    }
+    if (filterWidget) {
+        disconnect(filterWidget, nullptr, this, nullptr);
     }
 }
 
@@ -772,31 +833,61 @@ void MainWindow::performThrottledUIUpdate()
 void MainWindow::closeEvent(QCloseEvent *event)
 {
     try {
-        if (isCapturing) {
+        if (isCapturing || spoofingActive) {
+            QString message = isCapturing ? 
+                "Packet capture is currently active. Do you want to stop capture and exit?" :
+                "ARP spoofing is currently active. Do you want to stop spoofing and exit?";
+                
             QMessageBox::StandardButton reply = QMessageBox::question(this,
-                "Packet Capture Active",
-                "Packet capture is currently active. Do you want to stop capture and exit?",
+                "Network Operation Active", message,
                 QMessageBox::Yes | QMessageBox::No);
             
             if (reply == QMessageBox::Yes) {
-                onStopCapture();
+                // Stop operations without waiting to prevent UI blocking
+                if (isCapturing && captureController) {
+                    disconnect(captureController, nullptr, this, nullptr);
+                    captureController->stopCapture();
+                }
+                if (spoofingActive && arpSpoofingController) {
+                    disconnect(arpSpoofingController, nullptr, this, nullptr);
+                    arpSpoofingController->stopSpoofing();
+                }
             } else {
                 event->ignore();
                 return;
             }
         }
         
-        // Save window settings before closing
-        saveWindowSettings();
+        // Stop all timers immediately
+        if (statisticsTimer) {
+            statisticsTimer->stop();
+        }
+        if (uiUpdateTimer) {
+            uiUpdateTimer->stop();
+        }
         
-        // Save final settings
-        SettingsManager::instance()->saveSettings();
+        // Save window settings before closing (non-blocking)
+        try {
+            saveWindowSettings();
+        } catch (...) {
+            qWarning() << "Failed to save window settings during close";
+        }
+        
+        // Save final settings (non-blocking)
+        try {
+            SettingsManager::instance()->saveSettings();
+        } catch (...) {
+            qWarning() << "Failed to save application settings during close";
+        }
         
         LOG_INFO("MainWindow: Application closing gracefully");
         event->accept();
         
     } catch (const std::exception &e) {
         LOG_ERROR(QString("MainWindow: Exception during close: %1").arg(e.what()));
+        event->accept(); // Accept anyway to prevent hanging
+    } catch (...) {
+        LOG_ERROR("MainWindow: Unknown exception during close");
         event->accept(); // Accept anyway to prevent hanging
     }
 }

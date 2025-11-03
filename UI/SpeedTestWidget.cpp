@@ -31,17 +31,34 @@ SpeedTestWidget::SpeedTestWidget(QWidget *parent)
 
 SpeedTestWidget::~SpeedTestWidget()
 {
+    // Non-blocking cleanup to prevent delayed crashes
+    m_testInProgress = false;
+    
+    if (m_worker) {
+        // Disconnect all signals immediately to prevent callbacks
+        disconnect(m_worker, nullptr, this, nullptr);
+        
+        // Cancel test and force cleanup
+        m_worker->cancelTest();
+        m_worker->forceCleanup();
+        
+        // Schedule for deletion without waiting
+        if (m_worker->parent() == nullptr) {
+            m_worker->deleteLater();
+        }
+        m_worker = nullptr;
+    }
+    
     if (m_workerThread && m_workerThread->isRunning()) {
-        if (m_worker) {
-            // Disconnect signals before cleanup to prevent race conditions
-            disconnect(m_worker, nullptr, this, nullptr);
-            m_worker->cancelTest();
-        }
+        // Disconnect thread signals
+        disconnect(m_workerThread, nullptr, this, nullptr);
+        
+        // Signal quit but don't wait - prevents blocking destructor
         m_workerThread->quit();
-        if (!m_workerThread->wait(3000)) {
-            m_workerThread->terminate();
-            m_workerThread->wait(1000);
-        }
+        
+        // Schedule thread cleanup for later
+        m_workerThread->deleteLater();
+        m_workerThread = nullptr;
     }
 }
 
@@ -159,25 +176,33 @@ void SpeedTestWidget::cancelSpeedTest()
         return;
     }
     
-    if (m_worker) {
-        m_worker->cancelTest();
-    }
-    
-    if (m_workerThread && m_workerThread->isRunning()) {
-        m_workerThread->quit();
-        if (!m_workerThread->wait(3000)) {
-            m_workerThread->terminate();
-            m_workerThread->wait();
-        }
-    }
-    
     m_testInProgress = false;
     m_progressBar->setVisible(false);
     updateButtonStates();
     
-    // Clean up - disconnect signals first to prevent race conditions
+    // Cancel worker first
     if (m_worker) {
+        // Disconnect signals immediately to prevent callbacks
         disconnect(m_worker, nullptr, this, nullptr);
+        m_worker->cancelTest();
+    }
+    
+    // Handle thread cleanup without blocking
+    if (m_workerThread && m_workerThread->isRunning()) {
+        // Disconnect thread signals
+        disconnect(m_workerThread, nullptr, this, nullptr);
+        
+        // Signal quit but use shorter timeout to prevent UI blocking
+        m_workerThread->quit();
+        if (!m_workerThread->wait(1000)) {
+            // If thread doesn't quit quickly, terminate it
+            m_workerThread->terminate();
+            m_workerThread->wait(500); // Brief wait after terminate
+        }
+    }
+    
+    // Schedule cleanup for next event loop iteration to avoid blocking
+    if (m_worker) {
         m_worker->deleteLater();
         m_worker = nullptr;
     }
@@ -230,16 +255,24 @@ void SpeedTestWidget::onTestCompleted()
     m_progressBar->setVisible(false);
     updateButtonStates();
     
-    // Clean up thread safely
+    // Disconnect signals first to prevent further callbacks
+    if (m_worker) {
+        disconnect(m_worker, nullptr, this, nullptr);
+    }
+    if (m_workerThread) {
+        disconnect(m_workerThread, nullptr, this, nullptr);
+    }
+    
+    // Clean up thread with shorter timeout to prevent UI blocking
     if (m_workerThread && m_workerThread->isRunning()) {
         m_workerThread->quit();
-        if (!m_workerThread->wait(5000)) {
+        if (!m_workerThread->wait(2000)) {
             m_workerThread->terminate();
-            m_workerThread->wait();
+            m_workerThread->wait(500);
         }
     }
     
-    // Schedule cleanup for next event loop iteration
+    // Schedule cleanup for next event loop iteration to avoid blocking
     if (m_worker) {
         m_worker->deleteLater();
         m_worker = nullptr;
@@ -349,13 +382,14 @@ void SpeedTestWorker::runUploadTest()
 
 void SpeedTestWorker::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus)
 {
-    // Safety check: don't process if cleanup is in progress
+    // Safety check: don't process if cleanup is in progress or cancelled
     if (m_cleanupInProgress || m_cancelled) {
         cleanupProcess();
         return;
     }
     
     if (exitStatus == QProcess::CrashExit) {
+        qWarning() << "Speed test process crashed with exit code:" << exitCode;
         emit testError("Speed test process crashed");
         cleanupProcess();
         return;
@@ -366,12 +400,26 @@ void SpeedTestWorker::onProcessFinished(int exitCode, QProcess::ExitStatus exitS
         return;
     }
     
-    QString output = m_process->readAllStandardOutput();
-    qDebug() << "Process output:" << output;
+    // Read output safely
+    QString output;
+    try {
+        output = m_process->readAllStandardOutput();
+        qDebug() << "Process output:" << output;
+    } catch (...) {
+        qWarning() << "Failed to read process output";
+        emit testError("Failed to read speed test results");
+        cleanupProcess();
+        return;
+    }
     
     parseSpeedTestOutput(output);
     
     cleanupProcess();
+    
+    // Check if we're still in a valid state before proceeding
+    if (m_cancelled || m_cleanupInProgress) {
+        return;
+    }
     
     if (!m_downloadCompleted) {
         // Download test completed
@@ -382,8 +430,10 @@ void SpeedTestWorker::onProcessFinished(int exitCode, QProcess::ExitStatus exitS
             emit downloadSpeedResult(-1); // Failed
         }
         
-        // Start upload test
-        runUploadTest();
+        // Start upload test if not cancelled
+        if (!m_cancelled) {
+            runUploadTest();
+        }
     } else {
         // Upload test completed
         if (m_uploadSpeed >= 0) {
@@ -398,13 +448,36 @@ void SpeedTestWorker::onProcessFinished(int exitCode, QProcess::ExitStatus exitS
 
 void SpeedTestWorker::onProcessError(QProcess::ProcessError error)
 {
-    // Safety check: don't process if cleanup is in progress
-    if (m_cleanupInProgress) {
+    // Safety check: don't process if cleanup is in progress or cancelled
+    if (m_cleanupInProgress || m_cancelled) {
+        cleanupProcess();
         return;
     }
     
-    qDebug() << "Process error:" << error;
-    emit testError(QString("Process error: %1").arg(error));
+    QString errorMsg;
+    switch (error) {
+        case QProcess::FailedToStart:
+            errorMsg = "Speed test process failed to start";
+            break;
+        case QProcess::Crashed:
+            errorMsg = "Speed test process crashed";
+            break;
+        case QProcess::Timedout:
+            errorMsg = "Speed test process timed out";
+            break;
+        case QProcess::WriteError:
+            errorMsg = "Speed test process write error";
+            break;
+        case QProcess::ReadError:
+            errorMsg = "Speed test process read error";
+            break;
+        default:
+            errorMsg = QString("Unknown process error: %1").arg(error);
+            break;
+    }
+    
+    qWarning() << "Process error:" << errorMsg;
+    emit testError(errorMsg);
     
     cleanupProcess();
 }
@@ -436,10 +509,32 @@ void SpeedTestWorker::cancelTest()
         qDebug() << "Terminating speed test process...";
         // Disconnect signals before terminating to prevent race conditions
         disconnect(m_process, nullptr, this, nullptr);
+        
+        // Try terminate first, then kill if needed
         m_process->terminate();
-        if (!m_process->waitForFinished(3000)) {
+        if (!m_process->waitForFinished(1500)) {
+            qDebug() << "Process didn't terminate, killing...";
             m_process->kill();
+            m_process->waitForFinished(500); // Brief wait after kill
         }
+    }
+    
+    cleanupProcess();
+}
+
+void SpeedTestWorker::forceCleanup()
+{
+    m_cancelled = true;
+    m_cleanupInProgress = true;
+    
+    // Immediately terminate any running process
+    if (m_process && m_process->state() == QProcess::Running) {
+        // Disconnect signals first to prevent callbacks
+        disconnect(m_process, nullptr, this, nullptr);
+        
+        // Force immediate termination
+        m_process->kill();
+        m_process->waitForFinished(1000); // Brief wait only
     }
     
     cleanupProcess();
