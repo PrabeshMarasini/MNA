@@ -41,6 +41,7 @@ private slots:
     void handleWorkerError(const QString &error);
     void handleDeviceFound(const NetworkDevice &device);
     void handleDiscoveryComplete(int deviceCount);
+    void onThreadFinished();
 
 private:
     void setupWorker();

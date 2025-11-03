@@ -78,34 +78,55 @@ void DeviceDiscoveryController::setupWorker()
     
     // Connect worker signals
     connect(discoveryWorker, &DeviceDiscoveryWorker::deviceFound,
-            this, &DeviceDiscoveryController::handleDeviceFound);
+            this, &DeviceDiscoveryController::handleDeviceFound, Qt::QueuedConnection);
     connect(discoveryWorker, &DeviceDiscoveryWorker::discoveryComplete,
-            this, &DeviceDiscoveryController::handleDiscoveryComplete);
+            this, &DeviceDiscoveryController::handleDiscoveryComplete, Qt::QueuedConnection);
     connect(discoveryWorker, &DeviceDiscoveryWorker::errorOccurred,
-            this, &DeviceDiscoveryController::handleWorkerError);
+            this, &DeviceDiscoveryController::handleWorkerError, Qt::QueuedConnection);
     connect(discoveryWorker, &DeviceDiscoveryWorker::finished,
-            this, &DeviceDiscoveryController::handleWorkerFinished);
+            this, &DeviceDiscoveryController::handleWorkerFinished, Qt::QueuedConnection);
     
-    // Connect thread management
-    connect(discoveryWorker, &DeviceDiscoveryWorker::finished, discoveryThread, &QThread::quit);
-    connect(discoveryThread, &QThread::finished, discoveryWorker, &QObject::deleteLater);
-    connect(discoveryThread, &QThread::finished, discoveryThread, &QObject::deleteLater);
+    // Connect thread management - use Qt::DirectConnection for cleanup
+    connect(discoveryWorker, &DeviceDiscoveryWorker::finished, 
+            discoveryThread, &QThread::quit, Qt::DirectConnection);
+    connect(discoveryThread, &QThread::finished, 
+            this, &DeviceDiscoveryController::onThreadFinished, Qt::QueuedConnection);
     
     discoveryThread->start();
 }
 
 void DeviceDiscoveryController::cleanupWorker()
 {
+    if (discoveryWorker) {
+        // Disconnect all signals from the worker to prevent dangling connections
+        disconnect(discoveryWorker, nullptr, this, nullptr);
+    }
+    
     if (discoveryThread && discoveryThread->isRunning()) {
+        // Stop the worker first
+        if (discoveryWorker) {
+            QMetaObject::invokeMethod(discoveryWorker, "stopDiscovery", Qt::QueuedConnection);
+        }
+        
+        // Wait for thread to finish
         discoveryThread->quit();
-        if (!discoveryThread->wait(3000)) {
+        if (!discoveryThread->wait(5000)) {
+            qWarning() << "Thread did not finish gracefully, terminating...";
             discoveryThread->terminate();
-            discoveryThread->wait(1000);
+            discoveryThread->wait(2000);
         }
     }
     
-    discoveryThread = nullptr;
-    discoveryWorker = nullptr;
+    // Clean up objects if they still exist
+    if (discoveryWorker) {
+        discoveryWorker->deleteLater();
+        discoveryWorker = nullptr;
+    }
+    
+    if (discoveryThread) {
+        discoveryThread->deleteLater();
+        discoveryThread = nullptr;
+    }
 }
 
 void DeviceDiscoveryController::handleDeviceFound(const NetworkDevice &device)
@@ -133,6 +154,21 @@ void DeviceDiscoveryController::handleWorkerFinished()
     discovering = false;
 }
 
+void DeviceDiscoveryController::onThreadFinished()
+{
+    // This slot is called when the thread has completely finished
+    // Safe to clean up the worker and thread objects now
+    if (discoveryWorker) {
+        discoveryWorker->deleteLater();
+        discoveryWorker = nullptr;
+    }
+    
+    if (discoveryThread) {
+        discoveryThread->deleteLater();
+        discoveryThread = nullptr;
+    }
+}
+
 // DeviceDiscoveryWorker Implementation
 
 DeviceDiscoveryWorker::DeviceDiscoveryWorker()
@@ -142,6 +178,7 @@ DeviceDiscoveryWorker::DeviceDiscoveryWorker()
 
 DeviceDiscoveryWorker::~DeviceDiscoveryWorker()
 {
+    shouldStop = true;
 }
 
 void DeviceDiscoveryWorker::startDiscovery(const QString &interface)

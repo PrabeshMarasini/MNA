@@ -172,6 +172,14 @@ void DeviceSelectionDialog::onScanButtonClicked()
         return;
     }
     
+    // Stop any existing discovery first
+    if (discoveryController->isDiscovering()) {
+        discoveryController->stopDiscovery();
+        // Wait a bit for cleanup
+        QTimer::singleShot(100, this, &DeviceSelectionDialog::onScanButtonClicked);
+        return;
+    }
+    
     currentInterface = interfaceCombo->currentText();
     if (currentInterface.isEmpty()) {
         QMessageBox::warning(this, "Warning", "Please select a network interface.");
