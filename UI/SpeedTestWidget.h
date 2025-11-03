@@ -63,6 +63,7 @@ class SpeedTestWorker : public QObject
 
 public:
     explicit SpeedTestWorker(QObject *parent = nullptr);
+    ~SpeedTestWorker();
 
 public slots:
     void runSpeedTest();
@@ -82,8 +83,10 @@ private:
     void runDownloadTest();
     void runUploadTest();
     void parseSpeedTestOutput(const QString &output);
+    void cleanupProcess();
     
     bool m_cancelled;
+    bool m_cleanupInProgress;
     QProcess *m_process;
     bool m_downloadCompleted;
     double m_downloadSpeed;

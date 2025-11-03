@@ -33,10 +33,15 @@ SpeedTestWidget::~SpeedTestWidget()
 {
     if (m_workerThread && m_workerThread->isRunning()) {
         if (m_worker) {
+            // Disconnect signals before cleanup to prevent race conditions
+            disconnect(m_worker, nullptr, this, nullptr);
             m_worker->cancelTest();
         }
         m_workerThread->quit();
-        m_workerThread->wait(3000);
+        if (!m_workerThread->wait(3000)) {
+            m_workerThread->terminate();
+            m_workerThread->wait(1000);
+        }
     }
 }
 
@@ -170,8 +175,9 @@ void SpeedTestWidget::cancelSpeedTest()
     m_progressBar->setVisible(false);
     updateButtonStates();
     
-    // Clean up
+    // Clean up - disconnect signals first to prevent race conditions
     if (m_worker) {
+        disconnect(m_worker, nullptr, this, nullptr);
         m_worker->deleteLater();
         m_worker = nullptr;
     }
@@ -275,11 +281,18 @@ void SpeedTestWidget::resetResults()
 SpeedTestWorker::SpeedTestWorker(QObject *parent)
     : QObject(parent)
     , m_cancelled(false)
+    , m_cleanupInProgress(false)
     , m_process(nullptr)
     , m_downloadCompleted(false)
     , m_downloadSpeed(-1.0)
     , m_uploadSpeed(-1.0)
 {
+}
+
+SpeedTestWorker::~SpeedTestWorker()
+{
+    m_cleanupInProgress = true;
+    cleanupProcess();
 }
 
 void SpeedTestWorker::runSpeedTest()
@@ -336,16 +349,20 @@ void SpeedTestWorker::runUploadTest()
 
 void SpeedTestWorker::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus)
 {
-    if (m_cancelled) {
-        m_process->deleteLater();
-        m_process = nullptr;
+    // Safety check: don't process if cleanup is in progress
+    if (m_cleanupInProgress || m_cancelled) {
+        cleanupProcess();
         return;
     }
     
     if (exitStatus == QProcess::CrashExit) {
         emit testError("Speed test process crashed");
-        m_process->deleteLater();
-        m_process = nullptr;
+        cleanupProcess();
+        return;
+    }
+    
+    if (!m_process) {
+        qWarning() << "Process finished but m_process is null";
         return;
     }
     
@@ -354,8 +371,7 @@ void SpeedTestWorker::onProcessFinished(int exitCode, QProcess::ExitStatus exitS
     
     parseSpeedTestOutput(output);
     
-    m_process->deleteLater();
-    m_process = nullptr;
+    cleanupProcess();
     
     if (!m_downloadCompleted) {
         // Download test completed
@@ -382,13 +398,15 @@ void SpeedTestWorker::onProcessFinished(int exitCode, QProcess::ExitStatus exitS
 
 void SpeedTestWorker::onProcessError(QProcess::ProcessError error)
 {
+    // Safety check: don't process if cleanup is in progress
+    if (m_cleanupInProgress) {
+        return;
+    }
+    
     qDebug() << "Process error:" << error;
     emit testError(QString("Process error: %1").arg(error));
     
-    if (m_process) {
-        m_process->deleteLater();
-        m_process = nullptr;
-    }
+    cleanupProcess();
 }
 
 void SpeedTestWorker::parseSpeedTestOutput(const QString &output)
@@ -412,12 +430,29 @@ void SpeedTestWorker::parseSpeedTestOutput(const QString &output)
 void SpeedTestWorker::cancelTest()
 {
     m_cancelled = true;
+    m_cleanupInProgress = true;
     
     if (m_process && m_process->state() == QProcess::Running) {
         qDebug() << "Terminating speed test process...";
+        // Disconnect signals before terminating to prevent race conditions
+        disconnect(m_process, nullptr, this, nullptr);
         m_process->terminate();
         if (!m_process->waitForFinished(3000)) {
             m_process->kill();
         }
+    }
+    
+    cleanupProcess();
+}
+
+void SpeedTestWorker::cleanupProcess()
+{
+    if (m_process) {
+        // Disconnect all signals to prevent further callbacks
+        disconnect(m_process, nullptr, this, nullptr);
+        
+        // Safe deletion
+        m_process->deleteLater();
+        m_process = nullptr;
     }
 }
