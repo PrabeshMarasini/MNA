@@ -1159,6 +1159,30 @@ void MainWindow::onSpoofingStarted(const QList<QString> &targetIPs, const QStrin
         printf("[DEBUG] MainWindow: Stored direct reference to spoofing controller\n");
     }
     
+    // Initialize capture controller if not already created (needed for packet processing)
+    if (!captureController) {
+        try {
+            captureController = new PacketCaptureController(networkInterface, this);
+            qDebug() << "MainWindow initialized capture controller for spoofing on interface:" << networkInterface;
+            
+            // Connect capture controller signals after creation
+            connect(captureController, &PacketCaptureController::packetsBatchCaptured,
+                    this, &MainWindow::onNewPacketsBatchCaptured);
+            connect(captureController, &PacketCaptureController::captureError,
+                    this, &MainWindow::onCaptureError);
+            connect(captureController, &PacketCaptureController::captureStatusChanged,
+                    this, &MainWindow::onCaptureStatusChanged);
+            
+            printf("[DEBUG] MainWindow: Capture controller created for spoofing mode\n");
+            
+        } catch (const std::exception &e) {
+            qCritical() << "Failed to initialize capture controller for spoofing:" << e.what();
+            QMessageBox::critical(this, "Spoofing Error", 
+                QString("Failed to initialize packet processing for spoofing: %1").arg(e.what()));
+            return;
+        }
+    }
+    
     // Stop normal packet capture to avoid conflicts
     if (isCapturing && captureController) {
         captureController->stopCapture();
@@ -1227,7 +1251,8 @@ void MainWindow::onSpoofingTargetPacketCaptured(const QByteArray &packetData, co
     }
     
     if (!captureController) {
-        printf("[DEBUG] MainWindow: No capture controller available\n");
+        printf("[DEBUG] MainWindow: No capture controller available - this should not happen after spoofing starts\n");
+        qWarning() << "MainWindow: Capture controller is null during spoofing - packets cannot be displayed";
         return;
     }
     
