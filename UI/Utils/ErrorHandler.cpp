@@ -5,6 +5,7 @@
 #include <QDebug>
 #include <QThread>
 #include <QMutexLocker>
+#include <ctime>
 
 ErrorHandler* ErrorHandler::s_instance = nullptr;
 
@@ -128,7 +129,8 @@ void ErrorHandler::logError(ErrorLevel level, ErrorCategory category, const QStr
     error.message = message;
     error.details = details;
     error.source = source;
-    error.timestamp = QDateTime::currentDateTime();
+    // Temporary fix for locale crash - use simple timestamp
+    error.timestamp = QDateTime::fromSecsSinceEpoch(time(nullptr), QTimeZone::utc());
     error.context = context;
     error.errorCode = errorCode;
     
